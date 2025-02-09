@@ -92,3 +92,18 @@ class ApplicationInstallation(models.Model):
 
     def __str__(self):
         return f"{self.application} - {self.get_status_display()}"
+
+class SystemConfig(models.Model):
+    name = models.CharField('配置名称', max_length=50)
+    value = models.TextField('配置值', blank=True)
+    status = models.CharField('状态', max_length=20, default='pending')
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        verbose_name = '系统配置'
+        verbose_name_plural = verbose_name
+        db_table = 'system_configs'
+
+    def __str__(self):
+        return self.name

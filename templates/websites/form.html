@@ -24,15 +24,13 @@
 
                         <div class="mb-3">
                             <label class="form-label">PHP版本</label>
-                            <select name="php_version" class="form-select">
-                                <option value="">不使用 PHP</option>
-                                {% for version in installed_php_versions %}
-                                    <option value="{{ version }}" {% if form.instance.php_version == version %}selected{% endif %}>
-                                        PHP {{ version }}
-                                    </option>
+                            <select name="php_version" class="form-control">
+                                <option value="">不使用PHP</option>
+                                {% for version in php_versions %}
+                                    <option value="{{ version }}" {% if form.instance.php_version == version %}selected{% endif %}>PHP {{ version }}</option>
                                 {% endfor %}
                             </select>
-                            <div class="form-text">当前已安装的PHP版本: {{ installed_php_versions|join:", " }}</div>
+                            <div class="form-text">选择网站使用的PHP版本</div>
                         </div>
                         
                         <div class="mb-3" id="additional-domains">

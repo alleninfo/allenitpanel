@@ -3,11 +3,13 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from .models import Website, AdditionalDomain
 from .forms import WebsiteForm, AdditionalDomainForm
-from panel.models import AuditLog
+from panel.models import AuditLog, SystemConfig
 import os
 import shutil
 import subprocess
 from .utils import get_installed_php_versions
+from django.db import connection  # 添加这个导入
+from django.http import JsonResponse
 
 @login_required
 def website_list(request):
@@ -16,59 +18,47 @@ def website_list(request):
 
 @login_required
 def website_create(request):
-    # 获取已安装的PHP版本列表
-    installed_php_versions = get_installed_php_versions()
-    print(f"检测到的PHP版本: {installed_php_versions}")  # 添加调试信息
-    
     if request.method == 'POST':
         form = WebsiteForm(request.POST)
         if form.is_valid():
-            website = form.save()
-            
-            # 处理附加域名
-            additional_domains = request.POST.getlist('additional_domains[]')
-            for domain in additional_domains:
-                if domain.strip():  # 只处理非空域名
-                    AdditionalDomain.objects.create(
-                        website=website,
-                        domain=domain.strip()
-                    )
-            
-            # 创建网站目录
             try:
-                path = '/www/wwwroot/'  # 修改为固定的根目录
-                os.makedirs(path, exist_ok=True)
-                website.path = path
+                # 先创建网站对象
+                website = form.save(commit=False)
+                website.user = request.user
                 website.save()
+                
+                # 创建网站目录
+                path = os.path.join('/www/wwwroot', website.domain)
+                os.makedirs(path, exist_ok=True)
+                
+                # 更新网站路径并保存
+                Website.objects.filter(id=website.id).update(path=path)
+                
+                messages.success(request, '网站创建成功！')
+                return redirect('website_list')
             except Exception as e:
+                if website.id:
+                    website.delete()
                 messages.error(request, f'创建网站目录失败: {str(e)}')
-                website.delete()
                 return redirect('website_list')
-            
-            # 创建数据库
-            try:
-                subprocess.run(['mysql', '-e', f'CREATE DATABASE {website.database_name};'], check=True)
-            except subprocess.CalledProcessError as e:
-                messages.error(request, f'创建数据库失败: {str(e)}')
-                website.delete()
-                return redirect('website_list')
-            
-            # 记录审计日志
-            AuditLog.objects.create(
-                user=request.user,
-                action=f'创建网站: {website.name}',
-                ip_address=request.META.get('REMOTE_ADDR')
-            )
-            
-            messages.success(request, '网站创建成功')
-            return redirect('website_list')
     else:
         form = WebsiteForm()
-    
+
+    # 获取已安装的 PHP 版本
+    def get_installed_php_versions():
+        try:
+            # 获取 /www/server/php/ 目录下的所有文件夹
+            php_path = '/www/server/php'
+            if os.path.exists(php_path):
+                versions = [d for d in os.listdir(php_path) if os.path.isdir(os.path.join(php_path, d))]
+                return sorted(versions)
+        except Exception:
+            pass
+        return []
+
     context = {
         'form': form,
-        'installed_php_versions': installed_php_versions,
-        'website': None,  # 添加这行
+        'installed_php_versions': get_installed_php_versions()
     }
     return render(request, 'websites/form.html', context)
 
@@ -219,7 +209,7 @@ def generate_nginx_config(website):
     server_name = ' '.join(all_domains)
     
     # 网站根目录
-    root_path = website.path
+    root_path = os.path.join('/www/wwwroot', website.domain)
     os.makedirs(root_path, exist_ok=True)
     
     config = f"""server {{
@@ -236,7 +226,7 @@ def generate_nginx_config(website):
     error_page 404 /404.html;
     error_page 500 502 503 504 /50x.html;
     location = /50x.html {{
-        root /www/wwwroot/{root_path};
+        root /www/wwwroot;
     }}
     """
     
@@ -263,3 +253,43 @@ def generate_nginx_config(website):
     
     # 重新加载Nginx
     os.system('systemctl reload nginx')
+
+@login_required
+def website_mysql_status(request, pk):
+    website = get_object_or_404(Website, pk=pk)
+    return JsonResponse({
+        'mysql_status': website.mysql_status,
+    })
+
+@login_required
+def website_form(request, pk=None):
+    website = None
+    if pk:
+        website = get_object_or_404(Website, pk=pk)
+    
+    if request.method == 'POST':
+        form = WebsiteForm(request.POST, instance=website)
+        if form.is_valid():
+            website = form.save(commit=False)
+            website.php_version = request.POST.get('php_version', '')
+            website.save()
+            messages.success(request, '保存成功')
+            return redirect('website_list')
+    else:
+        form = WebsiteForm(instance=website)
+
+    # 从系统配置获取已安装的PHP版本
+    php_versions = SystemConfig.objects.filter(
+        name__startswith='php_',
+        status='installed'
+    ).values_list('name', flat=True)
+    
+    # 处理版本号格式
+    php_versions = [version.replace('php_', '') for version in php_versions]
+    
+    context = {
+        'form': form,
+        'php_versions': php_versions,
+        'website': website,
+    }
+    return render(request, 'websites/form.html', context)

@@ -9,4 +9,5 @@ urlpatterns = [
     path('<int:pk>/toggle/', views.website_toggle, name='website_toggle'),
     path('<int:website_id>/domain/add/', views.domain_add, name='domain_add'),
     path('domain/<int:pk>/delete/', views.domain_delete, name='domain_delete'),
+    path('websites/<int:pk>/mysql-status/', views.website_mysql_status, name='website_mysql_status'),
 ]

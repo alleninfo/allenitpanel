@@ -4,6 +4,7 @@ from django.utils.translation import gettext_lazy as _
 import os
 import subprocess
 import re
+from django.contrib.auth.models import User
 
 class Website(models.Model):
     SERVER_TYPES = (
@@ -37,39 +38,28 @@ class Website(models.Model):
             ])
         return php_versions
 
-    name = models.CharField(_('网站名称'), max_length=100)
-    domain = models.CharField(
-        _('主域名'),
-        max_length=255,
-        validators=[
-            RegexValidator(
-                regex=r'^[a-zA-Z0-9][a-zA-Z0-9-_.]+[a-zA-Z0-9]$',
-                message='域名格式不正确'
-            )
-        ]
+    user = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        null=True,  # 允许为空
+        default=1,  # 设置默认值为ID为1的用户
+        verbose_name='用户'
     )
+    name = models.CharField(_('网站名称'), max_length=100)
+    domain = models.CharField(max_length=100, unique=True, verbose_name='域名')
     server_type = models.CharField(
         _('服务器类型'),
         max_length=10,
         choices=SERVER_TYPES,
         default='nginx'
     )
-    php_version = models.CharField(
-        _('PHP版本'),
-        max_length=10,
-        choices=get_php_versions(),
-        default='none'
-    )
+    php_version = models.CharField(max_length=10, blank=True, null=True, verbose_name='PHP版本')
     status = models.BooleanField(_('运行状态'), default=False)
     ssl_enabled = models.BooleanField(_('SSL状态'), default=False)
-    created_at = models.DateTimeField(_('创建时间'), auto_now_add=True)
-    updated_at = models.DateTimeField(_('更新时间'), auto_now=True)
-    port = models.IntegerField(default=80)
-
-    @property
-    def path(self):
-        """根据域名自动生成网站目录路径"""
-        return os.path.join('/www/wwwroot/', self.domain)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    port = models.IntegerField(default=80, verbose_name='端口')
+    path = models.CharField(max_length=255, blank=True, null=True, verbose_name='网站路径')
 
     @property
     def database_name(self):
@@ -82,7 +72,7 @@ class Website(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return self.name
+        return self.domain
 
 class AdditionalDomain(models.Model):
     website = models.ForeignKey(
