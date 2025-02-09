@@ -1,0 +1,198 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col">
+            <h4>Web终端</h4>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group">
+                <button class="btn btn-outline-secondary" onclick="clearTerminal()">
+                    <i class="fas fa-eraser"></i> 清屏
+                </button>
+                <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                    字体大小
+                </button>
+                <ul class="dropdown-menu" id="fontSizeMenu">
+                    <li><a class="dropdown-item" href="#" data-size="12">12px</a></li>
+                    <li><a class="dropdown-item" href="#" data-size="14">14px</a></li>
+                    <li><a class="dropdown-item" href="#" data-size="16">16px</a></li>
+                    <li><a class="dropdown-item" href="#" data-size="18">18px</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col">
+            <div id="terminal" style="height: 600px; background-color: #000;"></div>
+        </div>
+    </div>
+</div>
+{% endblock content %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" rel="stylesheet">
+<style>
+    #terminal {
+        padding: 10px;
+        border-radius: 4px;
+    }
+    .xterm-viewport::-webkit-scrollbar {
+        width: 8px;
+    }
+    .xterm-viewport::-webkit-scrollbar-track {
+        background: #1a1a1a;
+    }
+    .xterm-viewport::-webkit-scrollbar-thumb {
+        background: #666;
+        border-radius: 4px;
+    }
+</style>
+{% endblock extra_css %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+<script>
+    let term;
+    let command = '';
+    let commandHistory = [];
+    let historyIndex = -1;
+    let currentPath = '';
+    const username = '{{ username }}';
+    const hostname = '{{ hostname }}';
+
+    function getPrompt() {
+        return `\r\n\x1b[32m${username}@${hostname}\x1b[0m:\x1b[34m${currentPath}\x1b[0m$ `;
+    }
+
+    function initTerminal() {
+        term = new Terminal({
+            cursorBlink: true,
+            fontSize: parseInt(localStorage.getItem('terminalFontSize') || '14'),
+            fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+            theme: {
+                background: '#000000',
+                foreground: '#ffffff',
+                cursor: '#ffffff',
+                green: '#00ff00',
+                blue: '#0088ff'
+            }
+        });
+
+        const fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+        term.open(document.getElementById('terminal'));
+        fitAddon.fit();
+
+        // 获取初始工作目录
+        fetch('{% url "terminal:execute" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: 'command=pwd'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                currentPath = data.cwd;
+                term.write('欢迎使用Web终端\r\n');
+                term.write(getPrompt());
+            }
+        });
+
+        term.onKey(({ key, domEvent }) => {
+            const printable = !domEvent.altKey && !domEvent.ctrlKey && !domEvent.metaKey;
+
+            if (domEvent.keyCode === 13) { // Enter
+                if (command.trim()) {
+                    executeCommand(command);
+                    commandHistory.push(command);
+                    historyIndex = commandHistory.length;
+                    command = '';
+                } else {
+                    term.write(getPrompt());
+                }
+            } else if (domEvent.keyCode === 8) { // Backspace
+                if (command.length > 0) {
+                    command = command.slice(0, -1);
+                    term.write('\b \b');
+                }
+            } else if (domEvent.keyCode === 38) { // Up arrow
+                if (historyIndex > 0) {
+                    historyIndex--;
+                    command = commandHistory[historyIndex];
+                    term.write('\x1b[2K\r' + getPrompt().slice(2) + command);
+                }
+            } else if (domEvent.keyCode === 40) { // Down arrow
+                if (historyIndex < commandHistory.length - 1) {
+                    historyIndex++;
+                    command = commandHistory[historyIndex];
+                    term.write('\x1b[2K\r' + getPrompt().slice(2) + command);
+                } else {
+                    historyIndex = commandHistory.length;
+                    command = '';
+                    term.write('\x1b[2K\r' + getPrompt().slice(2));
+                }
+            } else if (printable) {
+                command += key;
+                term.write(key);
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            fitAddon.fit();
+        });
+    }
+
+    function executeCommand(cmd) {
+        term.write('\r\n');
+        fetch('{% url "terminal:execute" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: 'command=' + encodeURIComponent(cmd)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                if (data.output) {
+                    term.write(data.output);
+                }
+                if (data.error) {
+                    term.write('\x1b[31m' + data.error + '\x1b[0m');
+                }
+                currentPath = data.cwd;
+            } else {
+                term.write('\x1b[31m错误: ' + data.error + '\x1b[0m');
+            }
+            term.write(getPrompt());
+        })
+        .catch(error => {
+            term.write('\x1b[31m错误: ' + error + '\x1b[0m');
+            term.write(getPrompt());
+        });
+    }
+
+    function clearTerminal() {
+        term.clear();
+        term.write(getPrompt());
+    }
+
+    document.getElementById('fontSizeMenu').addEventListener('click', (e) => {
+        if (e.target.dataset.size) {
+            const size = parseInt(e.target.dataset.size);
+            term.setOption('fontSize', size);
+            localStorage.setItem('terminalFontSize', size);
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', initTerminal);
+</script>
+{% endblock extra_js %} 

@@ -26,4 +26,6 @@ urlpatterns = [
     path('websites/', include('websites.urls')),
     path('files/', include('files.urls')),
     path('system/', include('system.urls')),
+    path('terminal/', include('terminal.urls', namespace='terminal')),
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

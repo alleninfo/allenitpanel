@@ -47,6 +47,8 @@ INSTALLED_APPS = [
     'files',
     'system',
     'panel',
+    'terminal',
+    'channels',
 ]
 
 MIDDLEWARE = [
@@ -165,4 +167,14 @@ LOGGING = {
         'propagate': False,
         },
 
+}
+
+# 指定 ASGI 应用
+ASGI_APPLICATION = 'project.asgi.application'
+
+# 配置 Channel Layers（可选，但建议添加）
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer'
+    }
 }
