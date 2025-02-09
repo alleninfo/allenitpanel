@@ -11,8 +11,13 @@ from django.utils.http import quote
 from django.conf import settings
 from .models import FileShare, FileOperation
 import uuid
-from datetime import timezone, timedelta
+from datetime import timezone, timedelta, datetime
 from django.urls import reverse
+import requests
+from urllib.parse import urlparse
+import json
+import zipfile
+import tarfile
 
 # Create your views here.
 
@@ -59,12 +64,18 @@ def file_browse(request):
     try:
         for item in os.scandir(full_path):
             stats = item.stat()
+            size_kb = stats.st_size / 1024 if not item.is_dir() else get_dir_size(item.path) / 1024
+            
+            # 转换时间戳为本地时间
+            modified_time = datetime.fromtimestamp(stats.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+            
             items.append({
                 'name': item.name,
                 'path': os.path.join(current_path, item.name),
                 'is_dir': item.is_dir(),
-                'size': stats.st_size if not item.is_dir() else get_dir_size(item.path),
-                'modified_time': stats.st_mtime,
+                'size': round(size_kb, 2),  # 保留两位小数
+                'size_unit': 'KB',
+                'modified_time': modified_time,
                 'permissions': oct(stats.st_mode)[-3:]
             })
         
@@ -357,3 +368,102 @@ def get_dir_size(path):
         return 0
         
     return total
+
+@login_required
+def paste_files(request):
+    data = json.loads(request.body)
+    files = data['files']
+    action = data['action']
+    destination = data['destination']
+    
+    try:
+        for file_path in files:
+            filename = os.path.basename(file_path)
+            dest_path = os.path.join(destination, filename)
+            
+            if action == 'cut':
+                shutil.move(file_path, dest_path)
+            else:  # copy
+                if os.path.isdir(file_path):
+                    shutil.copytree(file_path, dest_path)
+                else:
+                    shutil.copy2(file_path, dest_path)
+                    
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+@login_required
+def batch_delete(request):
+    data = json.loads(request.body)
+    files = data['files']
+    
+    try:
+        for file_path in files:
+            if os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+            else:
+                os.remove(file_path)
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+@login_required
+def compress_files(request):
+    data = json.loads(request.body)
+    files = data['files']
+    archive_name = data['name']
+    format = data['format']
+    current_path = data['path']
+    
+    try:
+        if format == 'zip':
+            archive_path = os.path.join(current_path, f'{archive_name}.zip')
+            with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for file_path in files:
+                    if os.path.isdir(file_path):
+                        for root, _, filenames in os.walk(file_path):
+                            for filename in filenames:
+                                file_full_path = os.path.join(root, filename)
+                                arcname = os.path.relpath(file_full_path, os.path.dirname(file_path))
+                                zf.write(file_full_path, arcname)
+                    else:
+                        zf.write(file_path, os.path.basename(file_path))
+        
+        elif format in ['tar', 'gzip']:
+            archive_path = os.path.join(current_path, f'{archive_name}.tar.gz')
+            with tarfile.open(archive_path, 'w:gz') as tar:
+                for file_path in files:
+                    tar.add(file_path, arcname=os.path.basename(file_path))
+                    
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+@login_required
+def remote_download(request):
+    data = json.loads(request.body)
+    url = data['url']
+    filename = data['filename']
+    current_path = data['path']
+    
+    try:
+        if not filename:
+            filename = os.path.basename(urlparse(url).path)
+            if not filename:
+                filename = 'downloaded_file'
+                
+        file_path = os.path.join(current_path, filename)
+        
+        # 下载文件
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        
+        with open(file_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+                    
+        return JsonResponse({'status': 'success'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)

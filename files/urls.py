@@ -11,4 +11,8 @@ urlpatterns = [
     path('delete/', views.file_delete, name='file_delete'),
     path('share/', views.file_share, name='file_share'),
     path('share/<str:token>/', views.file_share_download, name='file_share_download'),
+    path('paste/', views.paste_files, name='paste_files'),
+    path('batch-delete/', views.batch_delete, name='batch_delete'),
+    path('compress/', views.compress_files, name='compress_files'),
+    path('remote-download/', views.remote_download, name='remote_download'),
 ] 

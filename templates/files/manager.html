@@ -41,6 +41,29 @@
                 </nav>
             </div>
             <div class="col-auto">
+                <div class="btn-group me-2">
+                    <button class="btn btn-secondary" onclick="cutSelectedFiles()" id="cutBtn" disabled>
+                        <i class="fas fa-cut"></i> 剪切
+                    </button>
+                    <button class="btn btn-secondary" onclick="copySelectedFiles()" id="copyBtn" disabled>
+                        <i class="fas fa-copy"></i> 复制
+                    </button>
+                    <button class="btn btn-secondary" onclick="pasteFiles()" id="pasteBtn" disabled>
+                        <i class="fas fa-paste"></i> 粘贴
+                    </button>
+                    <button class="btn btn-danger" onclick="deleteSelectedFiles()" id="deleteBtn" disabled>
+                        <i class="fas fa-trash"></i> 删除
+                    </button>
+                    <button class="btn btn-info" onclick="compressFiles()" id="compressBtn" disabled>
+                        <i class="fas fa-file-archive"></i> 压缩
+                    </button>
+                    <button class="btn btn-info" onclick="showDecompressModal()" id="decompressBtn" disabled>
+                        <i class="fas fa-file-archive"></i> 解压缩
+                    </button>
+                    <button class="btn btn-primary" onclick="showRemoteDownloadModal()">
+                        <i class="fas fa-cloud-download-alt"></i> 远程下载
+                    </button>
+                </div>
                 <div class="btn-group">
                     <button class="btn btn-primary" onclick="showUploadModal()">
                         <i class="fas fa-upload"></i> 上传文件
@@ -57,6 +80,9 @@
             <table class="table">
                 <thead>
                     <tr>
+                        <th>
+                            <input type="checkbox" id="select-all" onclick="toggleSelectAll()">
+                        </th>
                         <th>名称</th>
                         <th>大小</th>
                         <th>修改时间</th>
@@ -79,6 +105,9 @@
                     {% for item in items %}
                     <tr class="file-item" {% if not item.is_dir %}onclick="showFileActions('{{ item.path }}')"{% endif %}>
                         <td>
+                            <input type="checkbox" class="file-checkbox" data-path="{{ item.path }}">
+                        </td>
+                        <td>
                             {% if item.is_dir %}
                             <a href="javascript:void(0)" onclick="navigateTo('{{ item.path }}')">
                                 <i class="fas fa-folder text-warning file-icon"></i> {{ item.name }}
@@ -87,7 +116,7 @@
                             <i class="fas fa-file text-primary file-icon"></i> {{ item.name }}
                             {% endif %}
                         </td>
-                        <td>{{ item.size }}</td>
+                        <td>{{ item.size }} {{ item.size_unit }}</td>
                         <td>{{ item.modified_time }}</td>
                         <td>{{ item.permissions }}</td>
                         <td>
@@ -192,6 +221,62 @@
         </div>
     </div>
 </div>
+
+<!-- 添加远程下载模态框 -->
+<div class="modal fade" id="remoteDownloadModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">远程下载</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">URL地址</label>
+                    <input type="text" class="form-control" id="remoteUrl">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">文件名（可选）</label>
+                    <input type="text" class="form-control" id="remoteFileName">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="startRemoteDownload()">下载</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 添加压缩选项模态框 -->
+<div class="modal fade" id="compressModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">压缩文件</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">压缩文件名</label>
+                    <input type="text" class="form-control" id="archiveName">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">压缩格式</label>
+                    <select class="form-select" id="archiveFormat">
+                        <option value="zip">ZIP</option>
+                        <option value="tar">TAR</option>
+                        <option value="gzip">GZIP</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="startCompress()">压缩</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -199,6 +284,9 @@
 const uploadModal = new bootstrap.Modal(document.getElementById('uploadModal'));
 const createFolderModal = new bootstrap.Modal(document.getElementById('createFolderModal'));
 const renameModal = new bootstrap.Modal(document.getElementById('renameModal'));
+const remoteDownloadModal = new bootstrap.Modal(document.getElementById('remoteDownloadModal'));
+const compressModal = new bootstrap.Modal(document.getElementById('compressModal'));
+let clipboard = { files: [], action: null }; // 用于存储剪切/复制的文件
 
 function navigateTo(path) {
     window.location.href = `/files/browse/?path=${encodeURIComponent(path)}`;
@@ -314,6 +402,183 @@ function deleteItem(path) {
 function downloadFile(path) {
     event.stopPropagation();
     window.location.href = `/files/download/?path=${encodeURIComponent(path)}`;
+}
+
+function toggleSelectAll() {
+    const selectAllCheckbox = document.getElementById('select-all');
+    const fileCheckboxes = document.getElementsByClassName('file-checkbox');
+    
+    for (let checkbox of fileCheckboxes) {
+        checkbox.checked = selectAllCheckbox.checked;
+    }
+}
+
+function getSelectedFiles() {
+    const fileCheckboxes = document.getElementsByClassName('file-checkbox');
+    const selectedFiles = [];
+    
+    for (let checkbox of fileCheckboxes) {
+        if (checkbox.checked) {
+            selectedFiles.push(checkbox.dataset.path);
+        }
+    }
+    
+    return selectedFiles;
+}
+
+// 更新按钮状态
+function updateButtonStates() {
+    const selectedFiles = getSelectedFiles();
+    const hasSelection = selectedFiles.length > 0;
+    
+    document.getElementById('cutBtn').disabled = !hasSelection;
+    document.getElementById('copyBtn').disabled = !hasSelection;
+    document.getElementById('deleteBtn').disabled = !hasSelection;
+    document.getElementById('compressBtn').disabled = !hasSelection;
+    
+    // 解压缩按钮只在选中单个压缩文件时启用
+    const decompressBtn = document.getElementById('decompressBtn');
+    decompressBtn.disabled = selectedFiles.length !== 1 || 
+        !selectedFiles[0].match(/\.(zip|tar|gz|rar)$/i);
+    
+    // 粘贴按钮在剪贴板有内容时启用
+    document.getElementById('pasteBtn').disabled = clipboard.files.length === 0;
+}
+
+// 监听复选框变化
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('file-checkbox') || e.target.id === 'select-all') {
+        updateButtonStates();
+    }
+});
+
+// 剪切文件
+function cutSelectedFiles() {
+    clipboard.files = getSelectedFiles();
+    clipboard.action = 'cut';
+    updateButtonStates();
+}
+
+// 复制文件
+function copySelectedFiles() {
+    clipboard.files = getSelectedFiles();
+    clipboard.action = 'copy';
+    updateButtonStates();
+}
+
+// 粘贴文件
+function pasteFiles() {
+    if (clipboard.files.length === 0) return;
+    
+    fetch('/files/paste/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            files: clipboard.files,
+            action: clipboard.action,
+            destination: '{{ current_path }}'
+        })
+    }).then(response => {
+        if (response.ok) {
+            location.reload();
+        } else {
+            alert('操作失败');
+        }
+    });
+}
+
+// 删除选中的文件
+function deleteSelectedFiles() {
+    const files = getSelectedFiles();
+    if (files.length === 0) return;
+    
+    if (confirm('确定要删除选中的文件吗？此操作不可恢复！')) {
+        fetch('/files/batch-delete/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({ files: files })
+        }).then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                alert('删除失败');
+            }
+        });
+    }
+}
+
+// 压缩文件
+function compressFiles() {
+    const files = getSelectedFiles();
+    if (files.length === 0) return;
+    
+    document.getElementById('archiveName').value = 'archive';
+    compressModal.show();
+}
+
+function startCompress() {
+    const files = getSelectedFiles();
+    const name = document.getElementById('archiveName').value;
+    const format = document.getElementById('archiveFormat').value;
+    
+    fetch('/files/compress/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            files: files,
+            name: name,
+            format: format,
+            path: '{{ current_path }}'
+        })
+    }).then(response => {
+        if (response.ok) {
+            compressModal.hide();
+            location.reload();
+        } else {
+            alert('压缩失败');
+        }
+    });
+}
+
+// 远程下载
+function showRemoteDownloadModal() {
+    document.getElementById('remoteUrl').value = '';
+    document.getElementById('remoteFileName').value = '';
+    remoteDownloadModal.show();
+}
+
+function startRemoteDownload() {
+    const url = document.getElementById('remoteUrl').value;
+    const filename = document.getElementById('remoteFileName').value;
+    
+    fetch('/files/remote-download/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            url: url,
+            filename: filename,
+            path: '{{ current_path }}'
+        })
+    }).then(response => {
+        if (response.ok) {
+            remoteDownloadModal.hide();
+            location.reload();
+        } else {
+            alert('下载失败');
+        }
+    });
 }
 </script>
 {% endblock %} 
