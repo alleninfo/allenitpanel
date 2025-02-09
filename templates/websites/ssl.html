@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}SSL证书管理 - {{ website.name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <!-- 证书列表 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-lock"></i> SSL证书列表
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if ssl_certs %}
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>域名</th>
+                                <th>颁发者</th>
+                                <th>有效期</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cert in ssl_certs %}
+                            <tr>
+                                <td>{{ cert.common_name }}</td>
+                                <td>{{ cert.issuer }}</td>
+                                <td>
+                                    {{ cert.valid_from|date:"Y-m-d" }} 至 {{ cert.valid_to|date:"Y-m-d" }}
+                                    <div class="progress mt-1" style="height: 4px;">
+                                        {% with days_left=cert.valid_to|timeuntil %}
+                                        <div class="progress-bar {% if days_left < 30 %}bg-danger{% elif days_left < 90 %}bg-warning{% else %}bg-success{% endif %}"
+                                             style="width: {{ cert.validity_percentage }}%">
+                                        </div>
+                                        {% endwith %}
+                                    </div>
+                                </td>
+                                <td>
+                                    {% with days_left=cert.valid_to|timeuntil %}
+                                    {% if days_left < 30 %}
+                                    <span class="badge bg-danger">即将过期</span>
+                                    {% elif days_left < 90 %}
+                                    <span class="badge bg-warning">正常</span>
+                                    {% else %}
+                                    <span class="badge bg-success">正常</span>
+                                    {% endif %}
+                                    {% endwith %}
+                                </td>
+                                <td>
+                                    <div class="btn-group">
+                                        <a href="{{ cert.certificate_file.url }}" class="btn btn-sm btn-info">
+                                            <i class="fas fa-download"></i> 下载证书
+                                        </a>
+                                        <button class="btn btn-sm btn-danger" onclick="deleteCertificate({{ cert.id }})">
+                                            <i class="fas fa-trash"></i> 删除
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-center mb-0">暂无SSL证书</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <!-- 上传证书 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-upload"></i> 上传证书
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">证书文件</label>
+                        <input type="file" name="cert_file" class="form-control" required>
+                        <div class="form-text">上传.pem或.crt格式的证书文件</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">私钥文件</label>
+                        <input type="file" name="key_file" class="form-control" required>
+                        <div class="form-text">上传.key格式的私钥文件</div>
+                    </div>
+                    <div class="text-end">
+                        <button type="submit" class="btn btn-primary">上传证书</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- 申请Let's Encrypt证书 -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-shield-alt"></i> 申请免费证书
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">使用Let's Encrypt申请免费的SSL证书</p>
+                <form method="post" action="{% url 'website_ssl_apply' website.pk %}">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">域名</label>
+                        <input type="text" class="form-control" value="{{ website.domain }}" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input type="checkbox" name="include_www" class="form-check-input" id="includeWww" checked>
+                            <label class="form-check-label" for="includeWww">
+                                同时申请www子域名
+                            </label>
+                        </div>
+                    </div>
+                    <div class="text-end">
+                        <button type="submit" class="btn btn-success">申请证书</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function deleteCertificate(id) {
+    if (!confirm('确定要删除此证书吗？删除后网站将无法通过HTTPS访问！')) {
+        return;
+    }
+    
+    fetch(`/websites/ssl/${id}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    }).then(response => {
+        if (response.ok) {
+            location.reload();
+        }
+    });
+}
+</script>
+{% endblock %} 

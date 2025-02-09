@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}创建网站 - 控制面板{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-plus"></i> 创建新网站
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">网站名称</label>
+                        <input type="text" name="name" class="form-control" required>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">域名</label>
+                        <input type="text" name="domain" class="form-control" required>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">端口</label>
+                        <input type="number" name="port" class="form-control" value="80" required>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">服务器类型</label>
+                        <select name="server_type" class="form-select" required>
+                            <option value="nginx">Nginx</option>
+                            <option value="apache">Apache</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="form-label">PHP版本</label>
+                        <select name="php_version" class="form-select">
+                            <option value="">不使用PHP</option>
+                            <option value="7.4">PHP 7.4</option>
+                            <option value="8.0">PHP 8.0</option>
+                            <option value="8.1">PHP 8.1</option>
+                            <option value="8.2">PHP 8.2</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mb-3">
+                <div class="form-check">
+                    <input type="checkbox" name="create_database" class="form-check-input" id="createDatabase">
+                    <label class="form-check-label" for="createDatabase">
+                        创建数据库
+                    </label>
+                </div>
+            </div>
+            
+            <div id="databaseOptions" class="d-none">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">数据库名称</label>
+                            <input type="text" name="db_name" class="form-control">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">数据库类型</label>
+                            <select name="db_type" class="form-select">
+                                <option value="mysql">MySQL</option>
+                                <option value="postgresql">PostgreSQL</option>
+                                <option value="sqlite">SQLite</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="text-end">
+                <a href="{% url 'website_list' %}" class="btn btn-secondary">取消</a>
+                <button type="submit" class="btn btn-primary">创建网站</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('createDatabase').addEventListener('change', function() {
+    const databaseOptions = document.getElementById('databaseOptions');
+    databaseOptions.classList.toggle('d-none', !this.checked);
+});
+</script>
+{% endblock %} 

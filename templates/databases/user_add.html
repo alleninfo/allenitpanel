@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}添加数据库用户 - {{ database.name }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-user-plus"></i> 添加数据库用户
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">用户名</label>
+                        <input type="text" name="username" class="form-control" required>
+                        <div class="form-text">只能包含字母、数字和下划线</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">密码</label>
+                        <input type="password" name="password" class="form-control" required>
+                        <div class="form-text">建议使用强密码</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">主机</label>
+                        <input type="text" name="host" class="form-control" value="%" required>
+                        <div class="form-text">允许连接的主机，%表示允许所有主机</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">权限</label>
+                        <select name="privileges" class="form-select" required>
+                            <option value="ALL PRIVILEGES">所有权限</option>
+                            <option value="SELECT">只读</option>
+                            <option value="SELECT,INSERT,UPDATE,DELETE">读写</option>
+                            <option value="SELECT,INSERT,UPDATE,DELETE,CREATE,DROP">完全控制</option>
+                        </select>
+                        <div class="form-text">用户对数据库的操作权限</div>
+                    </div>
+                </div>
+            </div>
+
+            {% if database.db_type == 'mysql' %}
+            <div class="mb-3">
+                <div class="form-check">
+                    <input type="checkbox" name="grant_option" class="form-check-input" id="grantOption">
+                    <label class="form-check-label" for="grantOption">
+                        允许授权其他用户
+                    </label>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="text-end">
+                <a href="{% url 'database_users' database.pk %}" class="btn btn-secondary">取消</a>
+                <button type="submit" class="btn btn-primary">添加用户</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 根据数据库类型调整表单
+const dbType = '{{ database.db_type }}';
+const hostInput = document.querySelector('input[name="host"]');
+const privilegesSelect = document.querySelector('select[name="privileges"]');
+
+if (dbType === 'postgresql') {
+    // PostgreSQL不使用host字段
+    hostInput.parentElement.style.display = 'none';
+    // 调整PostgreSQL特有的权限
+    privilegesSelect.innerHTML = `
+        <option value="ALL">所有权限</option>
+        <option value="SELECT">只读</option>
+        <option value="SELECT,INSERT,UPDATE,DELETE">读写</option>
+        <option value="ALL">完全控制</option>
+    `;
+} else if (dbType === 'sqlite') {
+    // SQLite不需要用户管理
+    document.querySelector('form').innerHTML = '<p class="text-center">SQLite数据库不支持用户管理</p>';
+}
+</script>
+{% endblock %} 

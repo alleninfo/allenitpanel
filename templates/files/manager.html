@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+
+{% block title %}文件管理 - 控制面板{% endblock %}
+
+{% block extra_css %}
+<style>
+.file-item {
+    cursor: pointer;
+}
+.file-item:hover {
+    background-color: #f8f9fa;
+}
+.file-icon {
+    width: 24px;
+    text-align: center;
+    margin-right: 10px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb mb-0">
+                        <li class="breadcrumb-item">
+                            <a href="javascript:void(0)" onclick="navigateTo('/')">
+                                <i class="fas fa-home"></i>
+                            </a>
+                        </li>
+                        {% for part in path_parts %}
+                        <li class="breadcrumb-item">
+                            <a href="javascript:void(0)" onclick="navigateTo('{{ part.path }}')">
+                                {{ part.name }}
+                            </a>
+                        </li>
+                        {% endfor %}
+                    </ol>
+                </nav>
+            </div>
+            <div class="col-auto">
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="showUploadModal()">
+                        <i class="fas fa-upload"></i> 上传文件
+                    </button>
+                    <button class="btn btn-success" onclick="showCreateFolderModal()">
+                        <i class="fas fa-folder-plus"></i> 新建文件夹
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>名称</th>
+                        <th>大小</th>
+                        <th>修改时间</th>
+                        <th>权限</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if current_path != '/' %}
+                    <tr class="file-item" onclick="navigateTo('{{ parent_path }}')">
+                        <td>
+                            <i class="fas fa-level-up-alt file-icon"></i> ..
+                        </td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td>-</td>
+                    </tr>
+                    {% endif %}
+                    {% for item in items %}
+                    <tr class="file-item" {% if not item.is_dir %}onclick="showFileActions('{{ item.path }}')"{% endif %}>
+                        <td>
+                            {% if item.is_dir %}
+                            <a href="javascript:void(0)" onclick="navigateTo('{{ item.path }}')">
+                                <i class="fas fa-folder text-warning file-icon"></i> {{ item.name }}
+                            </a>
+                            {% else %}
+                            <i class="fas fa-file text-primary file-icon"></i> {{ item.name }}
+                            {% endif %}
+                        </td>
+                        <td>{{ item.size }}</td>
+                        <td>{{ item.modified_time }}</td>
+                        <td>{{ item.permissions }}</td>
+                        <td>
+                            <div class="btn-group">
+                                {% if item.is_dir %}
+                                <button class="btn btn-sm btn-info" onclick="event.stopPropagation(); navigateTo('{{ item.path }}')">
+                                    <i class="fas fa-folder-open"></i> 打开
+                                </button>
+                                {% else %}
+                                <button class="btn btn-sm btn-info" onclick="event.stopPropagation(); downloadFile('{{ item.path }}')">
+                                    <i class="fas fa-download"></i> 下载
+                                </button>
+                                {% endif %}
+                                <button class="btn btn-sm btn-warning" onclick="event.stopPropagation(); showRenameModal('{{ item.path }}', '{{ item.name }}')">
+                                    <i class="fas fa-edit"></i> 重命名
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteItem('{{ item.path }}')">
+                                    <i class="fas fa-trash"></i> 删除
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center">当前目录为空</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 上传文件模态框 -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">上传文件</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="uploadForm">
+                    <div class="mb-3">
+                        <label class="form-label">选择文件</label>
+                        <input type="file" class="form-control" name="file" multiple>
+                    </div>
+                </form>
+                <div class="progress d-none">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="uploadFiles()">上传</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新建文件夹模态框 -->
+<div class="modal fade" id="createFolderModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">新建文件夹</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">文件夹名称</label>
+                    <input type="text" class="form-control" id="folderName">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="createFolder()">创建</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 重命名模态框 -->
+<div class="modal fade" id="renameModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">重命名</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">新名称</label>
+                    <input type="text" class="form-control" id="newName">
+                    <input type="hidden" id="renamePath">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="renameItem()">重命名</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const uploadModal = new bootstrap.Modal(document.getElementById('uploadModal'));
+const createFolderModal = new bootstrap.Modal(document.getElementById('createFolderModal'));
+const renameModal = new bootstrap.Modal(document.getElementById('renameModal'));
+
+function navigateTo(path) {
+    window.location.href = `/files/browse/?path=${encodeURIComponent(path)}`;
+}
+
+function showUploadModal() {
+    document.getElementById('uploadForm').reset();
+    uploadModal.show();
+}
+
+function showCreateFolderModal() {
+    document.getElementById('folderName').value = '';
+    createFolderModal.show();
+}
+
+function showRenameModal(path, name) {
+    event.stopPropagation();
+    document.getElementById('renamePath').value = path;
+    document.getElementById('newName').value = name;
+    renameModal.show();
+}
+
+function uploadFiles() {
+    const form = document.getElementById('uploadForm');
+    const formData = new FormData(form);
+    formData.append('path', '{{ current_path }}');
+
+    const progress = document.querySelector('#uploadModal .progress');
+    const progressBar = progress.querySelector('.progress-bar');
+    progress.classList.remove('d-none');
+
+    fetch('/files/upload/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: formData
+    }).then(response => {
+        if (response.ok) {
+            uploadModal.hide();
+            location.reload();
+        } else {
+            alert('上传失败');
+        }
+    });
+}
+
+function createFolder() {
+    const name = document.getElementById('folderName').value;
+    fetch('/files/create_folder/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            path: '{{ current_path }}',
+            name: name
+        })
+    }).then(response => {
+        if (response.ok) {
+            createFolderModal.hide();
+            location.reload();
+        } else {
+            alert('创建文件夹失败');
+        }
+    });
+}
+
+function renameItem() {
+    const path = document.getElementById('renamePath').value;
+    const newName = document.getElementById('newName').value;
+    fetch('/files/rename/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            path: path,
+            new_name: newName
+        })
+    }).then(response => {
+        if (response.ok) {
+            renameModal.hide();
+            location.reload();
+        } else {
+            alert('重命名失败');
+        }
+    });
+}
+
+function deleteItem(path) {
+    event.stopPropagation();
+    if (confirm('确定要删除此项吗？此操作不可恢复！')) {
+        fetch('/files/delete/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({ path: path })
+        }).then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                alert('删除失败');
+            }
+        });
+    }
+}
+
+function downloadFile(path) {
+    event.stopPropagation();
+    window.location.href = `/files/download/?path=${encodeURIComponent(path)}`;
+}
+</script>
+{% endblock %} 

@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}系统更新{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="card">
+        <div class="card-header">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h5 class="card-title mb-0">系统更新</h5>
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-primary" onclick="checkUpdates()">
+                        <i class="fas fa-sync"></i> 检查更新
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            {% if updates %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>包名</th>
+                            <th>当前版本</th>
+                            <th>可用版本</th>
+                            <th>更新大小</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for update in updates %}
+                        <tr>
+                            <td>{{ update.package }}</td>
+                            <td>{{ update.current_version }}</td>
+                            <td>{{ update.available_version }}</td>
+                            <td>{{ update.size|filesizeformat }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-primary update-package" data-package="{{ update.package }}">
+                                    更新
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-3">
+                <button class="btn btn-success" onclick="updateAll()">
+                    <i class="fas fa-download"></i> 更新所有
+                </button>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-check-circle text-success fa-3x mb-3"></i>
+                <h5>系统已是最新版本</h5>
+                <p class="text-muted">最后检查时间: {{ last_check }}</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 更新进度模态框 -->
+    <div class="modal fade" id="updateProgressModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">正在更新系统</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="progress mb-3">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <div id="updateStatus" class="text-center">准备更新...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function checkUpdates() {
+        location.reload();
+    }
+
+    function updatePackage(packageName) {
+        if (confirm('确定要更新 ' + packageName + ' 吗？')) {
+            showUpdateProgress();
+            $.post('{% url "update_package" %}', {
+                package: packageName,
+                csrfmiddlewaretoken: '{{ csrf_token }}'
+            }, function(response) {
+                if (response.status === 'success') {
+                    location.reload();
+                } else {
+                    alert('更新失败：' + response.message);
+                    hideUpdateProgress();
+                }
+            });
+        }
+    }
+
+    function updateAll() {
+        if (confirm('确定要更新所有软件包吗？')) {
+            showUpdateProgress();
+            $.post('{% url "update_all" %}', {
+                csrfmiddlewaretoken: '{{ csrf_token }}'
+            }, function(response) {
+                if (response.status === 'success') {
+                    location.reload();
+                } else {
+                    alert('更新失败：' + response.message);
+                    hideUpdateProgress();
+                }
+            });
+        }
+    }
+
+    function showUpdateProgress() {
+        $('#updateProgressModal').modal('show');
+        updateProgressAnimation();
+    }
+
+    function hideUpdateProgress() {
+        $('#updateProgressModal').modal('hide');
+    }
+
+    function updateProgressAnimation() {
+        let progress = 0;
+        const interval = setInterval(function() {
+            progress += 1;
+            if (progress > 100) {
+                clearInterval(interval);
+                return;
+            }
+            $('.progress-bar').css('width', progress + '%');
+            if (progress < 30) {
+                $('#updateStatus').text('正在下载更新...');
+            } else if (progress < 60) {
+                $('#updateStatus').text('正在安装更新...');
+            } else if (progress < 90) {
+                $('#updateStatus').text('正在配置系统...');
+            } else {
+                $('#updateStatus').text('即将完成...');
+            }
+        }, 100);
+    }
+
+    // 绑定更新按钮事件
+    $('.update-package').click(function() {
+        const packageName = $(this).data('package');
+        updatePackage(packageName);
+    });
+</script>
+{% endblock %} 

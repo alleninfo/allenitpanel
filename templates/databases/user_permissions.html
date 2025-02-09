@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+
+{% block title %}用户权限管理 - {{ database.name }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">
+                <i class="fas fa-user-shield"></i> {{ user.username }} 的权限管理
+            </h5>
+            <a href="{% url 'database_users' database.pk %}" class="btn btn-secondary btn-sm">
+                <i class="fas fa-arrow-left"></i> 返回用户列表
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            
+            <!-- 全局权限 -->
+            <div class="mb-4">
+                <h6 class="mb-3">全局权限</h6>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input type="checkbox" name="permissions[]" value="ALL" class="form-check-input" id="permAll"
+                                   {% if 'ALL' in user_permissions %}checked{% endif %}>
+                            <label class="form-check-label" for="permAll">
+                                所有权限
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input type="checkbox" name="permissions[]" value="CREATE" class="form-check-input" id="permCreate"
+                                   {% if 'CREATE' in user_permissions %}checked{% endif %}>
+                            <label class="form-check-label" for="permCreate">
+                                创建表
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input type="checkbox" name="permissions[]" value="DROP" class="form-check-input" id="permDrop"
+                                   {% if 'DROP' in user_permissions %}checked{% endif %}>
+                            <label class="form-check-label" for="permDrop">
+                                删除表
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input type="checkbox" name="permissions[]" value="GRANT" class="form-check-input" id="permGrant"
+                                   {% if 'GRANT' in user_permissions %}checked{% endif %}>
+                            <label class="form-check-label" for="permGrant">
+                                授权权限
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 数据操作权限 -->
+            <div class="mb-4">
+                <h6 class="mb-3">数据操作权限</h6>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input type="checkbox" name="permissions[]" value="SELECT" class="form-check-input" id="permSelect"
+                                   {% if 'SELECT' in user_permissions %}checked{% endif %}>
+                            <label class="form-check-label" for="permSelect">
+                                查询数据
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input type="checkbox" name="permissions[]" value="INSERT" class="form-check-input" id="permInsert"
+                                   {% if 'INSERT' in user_permissions %}checked{% endif %}>
+                            <label class="form-check-label" for="permInsert">
+                                插入数据
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input type="checkbox" name="permissions[]" value="UPDATE" class="form-check-input" id="permUpdate"
+                                   {% if 'UPDATE' in user_permissions %}checked{% endif %}>
+                            <label class="form-check-label" for="permUpdate">
+                                更新数据
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input type="checkbox" name="permissions[]" value="DELETE" class="form-check-input" id="permDelete"
+                                   {% if 'DELETE' in user_permissions %}checked{% endif %}>
+                            <label class="form-check-label" for="permDelete">
+                                删除数据
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 表结构权限 -->
+            <div class="mb-4">
+                <h6 class="mb-3">表结构权限</h6>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input type="checkbox" name="permissions[]" value="INDEX" class="form-check-input" id="permIndex"
+                                   {% if 'INDEX' in user_permissions %}checked{% endif %}>
+                            <label class="form-check-label" for="permIndex">
+                                管理索引
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input type="checkbox" name="permissions[]" value="ALTER" class="form-check-input" id="permAlter"
+                                   {% if 'ALTER' in user_permissions %}checked{% endif %}>
+                            <label class="form-check-label" for="permAlter">
+                                修改表结构
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input type="checkbox" name="permissions[]" value="TRIGGER" class="form-check-input" id="permTrigger"
+                                   {% if 'TRIGGER' in user_permissions %}checked{% endif %}>
+                            <label class="form-check-label" for="permTrigger">
+                                管理触发器
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input type="checkbox" name="permissions[]" value="REFERENCES" class="form-check-input" id="permReferences"
+                                   {% if 'REFERENCES' in user_permissions %}checked{% endif %}>
+                            <label class="form-check-label" for="permReferences">
+                                创建外键
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 表权限 -->
+            <div class="mb-4">
+                <h6 class="mb-3">表权限</h6>
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>表名</th>
+                                <th>查询</th>
+                                <th>插入</th>
+                                <th>更新</th>
+                                <th>删除</th>
+                                <th>修改结构</th>
+                                <th>所有权限</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for table in tables %}
+                            <tr>
+                                <td>{{ table.name }}</td>
+                                <td>
+                                    <div class="form-check">
+                                        <input type="checkbox" name="table_permissions[{{ table.name }}][]" value="SELECT"
+                                               class="form-check-input" {% if 'SELECT' in table.permissions %}checked{% endif %}>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="form-check">
+                                        <input type="checkbox" name="table_permissions[{{ table.name }}][]" value="INSERT"
+                                               class="form-check-input" {% if 'INSERT' in table.permissions %}checked{% endif %}>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="form-check">
+                                        <input type="checkbox" name="table_permissions[{{ table.name }}][]" value="UPDATE"
+                                               class="form-check-input" {% if 'UPDATE' in table.permissions %}checked{% endif %}>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="form-check">
+                                        <input type="checkbox" name="table_permissions[{{ table.name }}][]" value="DELETE"
+                                               class="form-check-input" {% if 'DELETE' in table.permissions %}checked{% endif %}>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="form-check">
+                                        <input type="checkbox" name="table_permissions[{{ table.name }}][]" value="ALTER"
+                                               class="form-check-input" {% if 'ALTER' in table.permissions %}checked{% endif %}>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="form-check">
+                                        <input type="checkbox" name="table_permissions[{{ table.name }}][]" value="ALL"
+                                               class="form-check-input table-all-permissions"
+                                               data-table="{{ table.name }}"
+                                               {% if 'ALL' in table.permissions %}checked{% endif %}>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 连接限制 -->
+            {% if database.db_type == 'mysql' %}
+            <div class="mb-4">
+                <h6 class="mb-3">连接限制</h6>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label">最大查询数/小时</label>
+                            <input type="number" name="max_queries_per_hour" class="form-control" 
+                                   value="{{ user.max_queries_per_hour|default:0 }}">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label">最大更新数/小时</label>
+                            <input type="number" name="max_updates_per_hour" class="form-control"
+                                   value="{{ user.max_updates_per_hour|default:0 }}">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label">最大连接数/小时</label>
+                            <input type="number" name="max_connections_per_hour" class="form-control"
+                                   value="{{ user.max_connections_per_hour|default:0 }}">
+                        </div>
+                    </div>
+                </div>
+                <div class="form-text">0表示不限制</div>
+            </div>
+            {% endif %}
+
+            <div class="text-end">
+                <button type="submit" class="btn btn-primary">保存权限设置</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 全局权限选择
+document.getElementById('permAll').addEventListener('change', function() {
+    const allChecks = document.querySelectorAll('input[name="permissions[]"]');
+    allChecks.forEach(check => check.checked = this.checked);
+});
+
+// 表权限全选
+document.querySelectorAll('.table-all-permissions').forEach(checkbox => {
+    checkbox.addEventListener('change', function() {
+        const tableName = this.dataset.table;
+        const tableChecks = document.querySelectorAll(`input[name="table_permissions[${tableName}][]"]`);
+        tableChecks.forEach(check => check.checked = this.checked);
+    });
+});
+
+// 根据数据库类型调整选项
+const dbType = '{{ database.db_type }}';
+if (dbType === 'postgresql') {
+    // PostgreSQL特有的权限
+    document.querySelectorAll('[value="TRIGGER"], [value="REFERENCES"]').forEach(el => {
+        el.parentElement.style.display = 'none';
+    });
+} else if (dbType === 'sqlite') {
+    // SQLite不支持用户权限管理
+    document.querySelector('form').innerHTML = '<p class="text-center">SQLite数据库不支持用户权限管理</p>';
+}
+</script>
+{% endblock %} 

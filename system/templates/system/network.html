@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}网络连接{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- 网络接口卡片 -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">网络接口</h5>
+                </div>
+                <div class="card-body">
+                    {% for interface, addrs in network_info.interfaces.items %}
+                    <div class="mb-4">
+                        <h6 class="border-bottom pb-2">{{ interface }}</h6>
+                        {% for addr in addrs %}
+                        <div class="mb-2">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <strong>地址：</strong>
+                                </div>
+                                <div class="col-md-8">
+                                    {{ addr.address }}
+                                </div>
+                            </div>
+                            {% if addr.netmask %}
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <strong>子网掩码：</strong>
+                                </div>
+                                <div class="col-md-8">
+                                    {{ addr.netmask }}
+                                </div>
+                            </div>
+                            {% endif %}
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <strong>协议族：</strong>
+                                </div>
+                                <div class="col-md-8">
+                                    {{ addr.family }}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- 网络统计卡片 -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">网络统计</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">发送</h6>
+                                    <p class="h4 mb-2">{{ network_info.io_stats.bytes_sent|filesizeformat }}</p>
+                                    <small class="text-muted">{{ network_info.io_stats.packets_sent }} 个数据包</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">接收</h6>
+                                    <p class="h4 mb-2">{{ network_info.io_stats.bytes_recv|filesizeformat }}</p>
+                                    <small class="text-muted">{{ network_info.io_stats.packets_recv }} 个数据包</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">错误</h6>
+                                    <p class="h4 mb-2">{{ network_info.io_stats.error_in + network_info.io_stats.error_out }}</p>
+                                    <small class="text-muted">
+                                        入站: {{ network_info.io_stats.error_in }} /
+                                        出站: {{ network_info.io_stats.error_out }}
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="card-title">丢包</h6>
+                                    <p class="h4 mb-2">{{ network_info.io_stats.drop_in + network_info.io_stats.drop_out }}</p>
+                                    <small class="text-muted">
+                                        入站: {{ network_info.io_stats.drop_in }} /
+                                        出站: {{ network_info.io_stats.drop_out }}
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 网络连接卡片 -->
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <h5 class="card-title mb-0">网络连接</h5>
+                        </div>
+                        <div class="col-auto">
+                            <span class="badge bg-primary">总连接数：{{ network_info.connections }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>协议</th>
+                                    <th>本地地址</th>
+                                    <th>本地端口</th>
+                                    <th>远程地址</th>
+                                    <th>远程端口</th>
+                                    <th>状态</th>
+                                    <th>进程</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for conn in network_info.connections_list %}
+                                <tr>
+                                    <td>{{ conn.proto }}</td>
+                                    <td>{{ conn.local_addr }}</td>
+                                    <td>{{ conn.local_port }}</td>
+                                    <td>{{ conn.remote_addr|default:"-" }}</td>
+                                    <td>{{ conn.remote_port|default:"-" }}</td>
+                                    <td>
+                                        <span class="badge {% if conn.status == 'ESTABLISHED' %}bg-success{% elif conn.status == 'LISTEN' %}bg-info{% else %}bg-secondary{% endif %}">
+                                            {{ conn.status }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if conn.pid %}
+                                        {{ conn.pid }} ({{ conn.process_name }})
+                                        {% else %}
+                                        -
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 自动刷新网络统计
+    function updateNetworkStats() {
+        $.get('{% url "system_stats" %}', function(data) {
+            // 更新发送统计
+            $('.card-body .h4').eq(0).text(formatBytes(data.network.bytes_sent));
+            $('.text-muted').eq(0).text(data.network.packets_sent + ' 个数据包');
+            
+            // 更新接收统计
+            $('.card-body .h4').eq(1).text(formatBytes(data.network.bytes_recv));
+            $('.text-muted').eq(1).text(data.network.packets_recv + ' 个数据包');
+            
+            // 更新错误统计
+            const totalErrors = data.network.error_in + data.network.error_out;
+            $('.card-body .h4').eq(2).text(totalErrors);
+            $('.text-muted').eq(2).text(
+                '入站: ' + data.network.error_in + ' / 出站: ' + data.network.error_out
+            );
+            
+            // 更新丢包统计
+            const totalDrops = data.network.drop_in + data.network.drop_out;
+            $('.card-body .h4').eq(3).text(totalDrops);
+            $('.text-muted').eq(3).text(
+                '入站: ' + data.network.drop_in + ' / 出站: ' + data.network.drop_out
+            );
+        });
+    }
+
+    // 格式化字节数
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // 每5秒更新一次网络统计
+    setInterval(updateNetworkStats, 5000);
+    updateNetworkStats();
+</script>
+{% endblock %} 

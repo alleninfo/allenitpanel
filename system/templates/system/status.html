@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}系统状态{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- 系统信息卡片 -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">系统信息</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table">
+                        <tbody>
+                            <tr>
+                                <th>操作系统</th>
+                                <td>{{ system_info.os }}</td>
+                            </tr>
+                            <tr>
+                                <th>主机名</th>
+                                <td>{{ system_info.hostname }}</td>
+                            </tr>
+                            <tr>
+                                <th>内核版本</th>
+                                <td>{{ system_info.kernel }}</td>
+                            </tr>
+                            <tr>
+                                <th>Python版本</th>
+                                <td>{{ system_info.python_version }}</td>
+                            </tr>
+                            <tr>
+                                <th>启动时间</th>
+                                <td>{{ system_info.boot_time }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- CPU信息卡片 -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">CPU信息</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <h6>CPU使用率</h6>
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" style="width: {{ cpu_info.total_cpu_usage }}%"
+                                aria-valuenow="{{ cpu_info.total_cpu_usage }}" aria-valuemin="0" aria-valuemax="100">
+                                {{ cpu_info.total_cpu_usage }}%
+                            </div>
+                        </div>
+                    </div>
+                    <table class="table">
+                        <tbody>
+                            <tr>
+                                <th>物理核心数</th>
+                                <td>{{ cpu_info.physical_cores }}</td>
+                            </tr>
+                            <tr>
+                                <th>逻辑核心数</th>
+                                <td>{{ cpu_info.total_cores }}</td>
+                            </tr>
+                            <tr>
+                                <th>最大频率</th>
+                                <td>{{ cpu_info.max_frequency|default:"未知" }} MHz</td>
+                            </tr>
+                            <tr>
+                                <th>当前频率</th>
+                                <td>{{ cpu_info.current_frequency|default:"未知" }} MHz</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <!-- 内存信息卡片 -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">内存信息</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <h6>内存使用率</h6>
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" style="width: {{ memory_info.percent }}%"
+                                aria-valuenow="{{ memory_info.percent }}" aria-valuemin="0" aria-valuemax="100">
+                                {{ memory_info.percent }}%
+                            </div>
+                        </div>
+                    </div>
+                    <table class="table">
+                        <tbody>
+                            <tr>
+                                <th>总内存</th>
+                                <td>{{ memory_info.total|filesizeformat }}</td>
+                            </tr>
+                            <tr>
+                                <th>已用内存</th>
+                                <td>{{ memory_info.used|filesizeformat }}</td>
+                            </tr>
+                            <tr>
+                                <th>可用内存</th>
+                                <td>{{ memory_info.available|filesizeformat }}</td>
+                            </tr>
+                            <tr>
+                                <th>交换分区总量</th>
+                                <td>{{ memory_info.swap_total|filesizeformat }}</td>
+                            </tr>
+                            <tr>
+                                <th>交换分区使用</th>
+                                <td>{{ memory_info.swap_used|filesizeformat }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 磁盘信息卡片 -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">磁盘信息</h5>
+                </div>
+                <div class="card-body">
+                    {% for disk in disk_info %}
+                    <div class="mb-3">
+                        <h6>{{ disk.mountpoint }}</h6>
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" style="width: {{ disk.percent }}%"
+                                aria-valuenow="{{ disk.percent }}" aria-valuemin="0" aria-valuemax="100">
+                                {{ disk.percent }}%
+                            </div>
+                        </div>
+                        <small class="text-muted">
+                            已用: {{ disk.used|filesizeformat }} / 总计: {{ disk.total|filesizeformat }}
+                        </small>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <!-- 网络信息卡片 -->
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">网络信息</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>网络接口</h6>
+                            {% for interface, addrs in network_info.interfaces.items %}
+                            <div class="mb-3">
+                                <strong>{{ interface }}</strong>
+                                {% for addr in addrs %}
+                                <div class="small">
+                                    {{ addr.address }}
+                                    {% if addr.netmask %}
+                                    (掩码: {{ addr.netmask }})
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="col-md-6">
+                            <h6>网络统计</h6>
+                            <table class="table">
+                                <tbody>
+                                    <tr>
+                                        <th>发送字节</th>
+                                        <td>{{ network_info.io_stats.bytes_sent|filesizeformat }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>接收字节</th>
+                                        <td>{{ network_info.io_stats.bytes_recv|filesizeformat }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>发送数据包</th>
+                                        <td>{{ network_info.io_stats.packets_sent }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>接收数据包</th>
+                                        <td>{{ network_info.io_stats.packets_recv }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <!-- 进程列表卡片 -->
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">进程列表</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>PID</th>
+                                    <th>名称</th>
+                                    <th>用户</th>
+                                    <th>CPU使用率</th>
+                                    <th>内存使用率</th>
+                                    <th>状态</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for process in processes %}
+                                <tr>
+                                    <td>{{ process.pid }}</td>
+                                    <td>{{ process.name }}</td>
+                                    <td>{{ process.username }}</td>
+                                    <td>{{ process.cpu_percent }}%</td>
+                                    <td>{{ process.memory_percent }}%</td>
+                                    <td>{{ process.status }}</td>
+                                    <td>{{ process.create_time }}</td>
+                                    <td>
+                                        <button class="btn btn-danger btn-sm kill-process" data-pid="{{ process.pid }}">
+                                            结束进程
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <!-- 服务列表卡片 -->
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">系统服务</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>服务名称</th>
+                                    <th>描述</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for service in services %}
+                                <tr>
+                                    <td>{{ service.name }}</td>
+                                    <td>{{ service.description }}</td>
+                                    <td>
+                                        {% if service.is_running %}
+                                        <span class="badge bg-success">运行中</span>
+                                        {% else %}
+                                        <span class="badge bg-danger">已停止</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button class="btn btn-primary btn-sm service-control" data-service-id="{{ service.id }}"
+                                                data-action="start" {% if service.is_running %}disabled{% endif %}>
+                                                启动
+                                            </button>
+                                            <button class="btn btn-warning btn-sm service-control" data-service-id="{{ service.id }}"
+                                                data-action="restart">
+                                                重启
+                                            </button>
+                                            <button class="btn btn-danger btn-sm service-control" data-service-id="{{ service.id }}"
+                                                data-action="stop" {% if not service.is_running %}disabled{% endif %}>
+                                                停止
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 自动刷新系统状态
+    function updateSystemStats() {
+        $.get('{% url "system_stats" %}', function(data) {
+            // 更新CPU使用率
+            $('.progress-bar').first().css('width', data.cpu.total_cpu_usage + '%')
+                .attr('aria-valuenow', data.cpu.total_cpu_usage)
+                .text(data.cpu.total_cpu_usage + '%');
+
+            // 更新内存使用率
+            $('.progress-bar').eq(1).css('width', data.memory.percent + '%')
+                .attr('aria-valuenow', data.memory.percent)
+                .text(data.memory.percent + '%');
+
+            // 更新网络统计
+            $('td').eq(8).text(formatBytes(data.network.bytes_sent));
+            $('td').eq(9).text(formatBytes(data.network.bytes_recv));
+            $('td').eq(10).text(data.network.packets_sent);
+            $('td').eq(11).text(data.network.packets_recv);
+        });
+    }
+
+    // 格式化字节数
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // 结束进程
+    $('.kill-process').click(function() {
+        const pid = $(this).data('pid');
+        if (confirm('确定要结束此进程吗？')) {
+            $.post('{% url "kill_process" 0 %}'.replace('0', pid), {
+                csrfmiddlewaretoken: '{{ csrf_token }}'
+            }, function(response) {
+                if (response.status === 'success') {
+                    location.reload();
+                } else {
+                    alert('操作失败：' + response.message);
+                }
+            });
+        }
+    });
+
+    // 服务控制
+    $('.service-control').click(function() {
+        const serviceId = $(this).data('service-id');
+        const action = $(this).data('action');
+        if (confirm('确定要' + $(this).text().trim() + '此服务吗？')) {
+            $.post('{% url "service_control" 0 %}'.replace('0', serviceId), {
+                csrfmiddlewaretoken: '{{ csrf_token }}',
+                action: action
+            }, function(response) {
+                if (response.status === 'success') {
+                    location.reload();
+                } else {
+                    alert('操作失败：' + response.message);
+                }
+            });
+        }
+    });
+
+    // 每5秒更新一次系统状态
+    setInterval(updateSystemStats, 5000);
+    updateSystemStats();
+</script>
+{% endblock %} 

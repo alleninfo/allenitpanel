@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}仪表盘 - 控制面板{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 系统状态卡片 -->
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-microchip"></i> CPU使用率
+                </h5>
+                <h2 class="card-text">{{ cpu_percent }}%</h2>
+                <div class="progress">
+                    <div class="progress-bar" role="progressbar" style="width: {{ cpu_percent }}%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-memory"></i> 内存使用率
+                </h5>
+                <h2 class="card-text">{{ memory_percent }}%</h2>
+                <div class="progress">
+                    <div class="progress-bar" role="progressbar" style="width: {{ memory_percent }}%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-hdd"></i> 磁盘使用率
+                </h5>
+                <h2 class="card-text">{{ disk_percent }}%</h2>
+                <div class="progress">
+                    <div class="progress-bar" role="progressbar" style="width: {{ disk_percent }}%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-network-wired"></i> 网络流量
+                </h5>
+                <p class="mb-1">上传：{{ network_tx }}</p>
+                <p class="mb-0">下载：{{ network_rx }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <!-- 网站统计 -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-globe"></i> 网站统计
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="websiteChart"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 数据库统计 -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-database"></i> 数据库统计
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="databaseChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <!-- 最近操作日志 -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-history"></i> 最近操作日志
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>用户</th>
+                                <th>操作</th>
+                                <th>IP地址</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in recent_logs %}
+                            <tr>
+                                <td>{{ log.timestamp }}</td>
+                                <td>{{ log.user }}</td>
+                                <td>{{ log.action }}</td>
+                                <td>{{ log.ip_address }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 网站统计图表
+const websiteCtx = document.getElementById('websiteChart').getContext('2d');
+new Chart(websiteCtx, {
+    type: 'pie',
+    data: {
+        labels: ['运行中', '已停止', 'SSL启用', 'SSL未启用'],
+        datasets: [{
+            data: {{ website_stats|safe }},
+            backgroundColor: ['#28a745', '#dc3545', '#17a2b8', '#6c757d']
+        }]
+    }
+});
+
+// 数据库统计图表
+const databaseCtx = document.getElementById('databaseChart').getContext('2d');
+new Chart(databaseCtx, {
+    type: 'pie',
+    data: {
+        labels: ['MySQL', 'PostgreSQL', 'SQLite'],
+        datasets: [{
+            data: {{ database_stats|safe }},
+            backgroundColor: ['#007bff', '#fd7e14', '#20c997']
+        }]
+    }
+});
+</script>
+{% endblock %} 

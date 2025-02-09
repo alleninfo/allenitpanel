@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block title %}数据库用户管理 - {{ database.name }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">
+                <i class="fas fa-users"></i> 数据库用户管理
+            </h5>
+            <a href="{% url 'database_user_add' database.pk %}" class="btn btn-primary btn-sm">
+                <i class="fas fa-plus"></i> 添加用户
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if users %}
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>用户名</th>
+                        <th>主机</th>
+                        <th>权限</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.host }}</td>
+                        <td>{{ user.privileges }}</td>
+                        <td>{{ user.created_at|date:"Y-m-d H:i" }}</td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-info" onclick="editUser({{ user.pk }})">
+                                    <i class="fas fa-edit"></i> 编辑
+                                </button>
+                                <button class="btn btn-sm btn-warning" onclick="resetPassword({{ user.pk }})">
+                                    <i class="fas fa-key"></i> 重置密码
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteUser({{ user.pk }})">
+                                    <i class="fas fa-trash"></i> 删除
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+            <p class="text-muted mb-0">暂无数据库用户</p>
+            <a href="{% url 'database_user_add' database.pk %}" class="btn btn-primary mt-3">
+                <i class="fas fa-plus"></i> 添加第一个用户
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 编辑用户模态框 -->
+<div class="modal fade" id="editUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">编辑用户</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editUserForm">
+                    <div class="mb-3">
+                        <label class="form-label">用户名</label>
+                        <input type="text" name="username" class="form-control" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">主机</label>
+                        <input type="text" name="host" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">权限</label>
+                        <select name="privileges" class="form-select">
+                            <option value="ALL PRIVILEGES">所有权限</option>
+                            <option value="SELECT">只读</option>
+                            <option value="SELECT,INSERT,UPDATE,DELETE">读写</option>
+                            <option value="SELECT,INSERT,UPDATE,DELETE,CREATE,DROP">完全控制</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveUser()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 重置密码模态框 -->
+<div class="modal fade" id="resetPasswordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">重置密码</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="resetPasswordForm">
+                    <div class="mb-3">
+                        <label class="form-label">新密码</label>
+                        <input type="password" name="password" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">确认密码</label>
+                        <input type="password" name="confirm_password" class="form-control" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="savePassword()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const editUserModal = new bootstrap.Modal(document.getElementById('editUserModal'));
+const resetPasswordModal = new bootstrap.Modal(document.getElementById('resetPasswordModal'));
+let currentUserId = null;
+
+function editUser(userId) {
+    currentUserId = userId;
+    fetch(`/databases/{{ database.pk }}/users/${userId}/`)
+        .then(response => response.json())
+        .then(data => {
+            const form = document.getElementById('editUserForm');
+            form.querySelector('[name=username]').value = data.username;
+            form.querySelector('[name=host]').value = data.host;
+            form.querySelector('[name=privileges]').value = data.privileges;
+            editUserModal.show();
+        });
+}
+
+function saveUser() {
+    const form = document.getElementById('editUserForm');
+    const data = {
+        host: form.querySelector('[name=host]').value,
+        privileges: form.querySelector('[name=privileges]').value
+    };
+    
+    fetch(`/databases/{{ database.pk }}/users/${currentUserId}/edit/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify(data)
+    }).then(response => {
+        if (response.ok) {
+            editUserModal.hide();
+            location.reload();
+        } else {
+            alert('保存失败');
+        }
+    });
+}
+
+function resetPassword(userId) {
+    currentUserId = userId;
+    document.getElementById('resetPasswordForm').reset();
+    resetPasswordModal.show();
+}
+
+function savePassword() {
+    const form = document.getElementById('resetPasswordForm');
+    const password = form.querySelector('[name=password]').value;
+    const confirmPassword = form.querySelector('[name=confirm_password]').value;
+    
+    if (password !== confirmPassword) {
+        alert('两次输入的密码不一致');
+        return;
+    }
+    
+    fetch(`/databases/{{ database.pk }}/users/${currentUserId}/password/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({ password: password })
+    }).then(response => {
+        if (response.ok) {
+            resetPasswordModal.hide();
+            alert('密码已重置');
+        } else {
+            alert('重置密码失败');
+        }
+    });
+}
+
+function deleteUser(userId) {
+    if (!confirm('确定要删除此用户吗？')) {
+        return;
+    }
+    
+    fetch(`/databases/{{ database.pk }}/users/${userId}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    }).then(response => {
+        if (response.ok) {
+            location.reload();
+        }
+    });
+}
+</script>
+{% endblock %} 

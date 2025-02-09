@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+
+{% block title %}数据库监控 - {{ database.name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <!-- 性能指标图表 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-chart-line"></i> 性能监控
+                    </h5>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="setTimeRange('1h')">1小时</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="setTimeRange('6h')">6小时</button>
+                        <button class="btn btn-sm btn-outline-secondary active" onclick="setTimeRange('24h')">24小时</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="setTimeRange('7d')">7天</button>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <canvas id="connectionsChart"></canvas>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <canvas id="queryChart"></canvas>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <canvas id="ioChart"></canvas>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <canvas id="memoryChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 慢查询列表 -->
+        <div class="card">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-clock"></i> 慢查询记录
+                    </h5>
+                    <button class="btn btn-primary btn-sm" onclick="clearSlowQueries()">
+                        <i class="fas fa-trash"></i> 清空记录
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>执行时间</th>
+                                <th>查询语句</th>
+                                <th>耗时(秒)</th>
+                                <th>扫描行数</th>
+                                <th>来源主机</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for query in slow_queries %}
+                            <tr>
+                                <td>{{ query.start_time|date:"Y-m-d H:i:s" }}</td>
+                                <td>
+                                    <code class="text-wrap">{{ query.sql }}</code>
+                                </td>
+                                <td>{{ query.duration }}</td>
+                                <td>{{ query.rows_examined }}</td>
+                                <td>{{ query.host }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center">暂无慢查询记录</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <!-- 实时状态 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-tachometer-alt"></i> 实时状态
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <h6 class="mb-2">运行状态</h6>
+                    <span class="badge bg-success">运行中</span>
+                    <small class="text-muted ms-2">已运行 {{ uptime }}</small>
+                </div>
+                <div class="mb-3">
+                    <h6 class="mb-2">当前连接数</h6>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="h3 mb-0">{{ current_connections }}</span>
+                        <small class="text-muted">最大: {{ max_connections }}</small>
+                    </div>
+                    <div class="progress mt-2" style="height: 4px;">
+                        <div class="progress-bar" style="width: {{ connection_percentage }}%"></div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <h6 class="mb-2">缓存命中率</h6>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="h3 mb-0">{{ cache_hit_ratio }}%</span>
+                        <small class="text-muted">总查询: {{ total_queries }}</small>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <h6 class="mb-2">内存使用</h6>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="h3 mb-0">{{ memory_used|filesizeformat }}</span>
+                        <small class="text-muted">总内存: {{ total_memory|filesizeformat }}</small>
+                    </div>
+                    <div class="progress mt-2" style="height: 4px;">
+                        <div class="progress-bar" style="width: {{ memory_percentage }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 数据库信息 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle"></i> 数据库信息
+                </h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tbody>
+                        <tr>
+                            <th>版本</th>
+                            <td>{{ version }}</td>
+                        </tr>
+                        <tr>
+                            <th>字符集</th>
+                            <td>{{ charset }}</td>
+                        </tr>
+                        <tr>
+                            <th>数据目录</th>
+                            <td>{{ data_dir }}</td>
+                        </tr>
+                        <tr>
+                            <th>表数量</th>
+                            <td>{{ table_count }}</td>
+                        </tr>
+                        <tr>
+                            <th>数据大小</th>
+                            <td>{{ data_size|filesizeformat }}</td>
+                        </tr>
+                        <tr>
+                            <th>索引大小</th>
+                            <td>{{ index_size|filesizeformat }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 监控设置 -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-cog"></i> 监控设置
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'database_monitor_settings' database.pk %}">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">慢查询阈值(秒)</label>
+                        <input type="number" name="slow_query_time" class="form-control" value="{{ slow_query_time }}" min="0" step="0.1">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">监控间隔(秒)</label>
+                        <input type="number" name="monitor_interval" class="form-control" value="{{ monitor_interval }}" min="1">
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input type="checkbox" name="enable_alerts" class="form-check-input" id="enableAlerts" {% if enable_alerts %}checked{% endif %}>
+                            <label class="form-check-label" for="enableAlerts">
+                                启用告警通知
+                            </label>
+                        </div>
+                    </div>
+                    <div class="text-end">
+                        <button type="submit" class="btn btn-primary">保存设置</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 初始化图表
+const connectionsChart = new Chart(document.getElementById('connectionsChart').getContext('2d'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            label: '连接数',
+            data: [],
+            borderColor: '#007bff',
+            fill: false
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        }
+    }
+});
+
+const queryChart = new Chart(document.getElementById('queryChart').getContext('2d'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            label: '每秒查询数',
+            data: [],
+            borderColor: '#28a745',
+            fill: false
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        }
+    }
+});
+
+const ioChart = new Chart(document.getElementById('ioChart').getContext('2d'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            label: '读取(MB/s)',
+            data: [],
+            borderColor: '#ffc107',
+            fill: false
+        }, {
+            label: '写入(MB/s)',
+            data: [],
+            borderColor: '#dc3545',
+            fill: false
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        }
+    }
+});
+
+const memoryChart = new Chart(document.getElementById('memoryChart').getContext('2d'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            label: '内存使用(MB)',
+            data: [],
+            borderColor: '#6f42c1',
+            fill: false
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        }
+    }
+});
+
+// 更新图表数据
+function updateCharts() {
+    fetch(`/databases/{{ database.pk }}/monitor/stats/`)
+        .then(response => response.json())
+        .then(data => {
+            // 更新连接数图表
+            connectionsChart.data.labels = data.timestamps;
+            connectionsChart.data.datasets[0].data = data.connections;
+            connectionsChart.update();
+
+            // 更新查询数图表
+            queryChart.data.labels = data.timestamps;
+            queryChart.data.datasets[0].data = data.queries_per_second;
+            queryChart.update();
+
+            // 更新IO图表
+            ioChart.data.labels = data.timestamps;
+            ioChart.data.datasets[0].data = data.io_reads;
+            ioChart.data.datasets[1].data = data.io_writes;
+            ioChart.update();
+
+            // 更新内存图表
+            memoryChart.data.labels = data.timestamps;
+            memoryChart.data.datasets[0].data = data.memory_usage;
+            memoryChart.update();
+        });
+}
+
+// 设置时间范围
+function setTimeRange(range) {
+    // 更新按钮状态
+    document.querySelectorAll('.btn-group .btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+
+    // 获取新的数据
+    fetch(`/databases/{{ database.pk }}/monitor/stats/?range=${range}`)
+        .then(response => response.json())
+        .then(data => {
+            // 更新所有图表
+            updateCharts();
+        });
+}
+
+// 清空慢查询记录
+function clearSlowQueries() {
+    if (!confirm('确定要清空所有慢查询记录吗？')) {
+        return;
+    }
+    
+    fetch(`/databases/{{ database.pk }}/monitor/clear_slow_queries/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    }).then(response => {
+        if (response.ok) {
+            location.reload();
+        }
+    });
+}
+
+// 定时更新数据
+setInterval(updateCharts, {{ monitor_interval|default:5 }} * 1000);
+
+// 初始加载
+updateCharts();
+</script>
+{% endblock %} 

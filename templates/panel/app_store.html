@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}应用商店 - 控制面板{% endblock %}
+
+{% block content %}
+<!-- 添加CSRF令牌 -->
+{% csrf_token %}
+
+<div class="container-fluid">
+    <!-- 搜索和筛选 -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <span class="input-group-text">
+                            <i class="fas fa-search"></i>
+                        </span>
+                        <input type="text" name="search" class="form-control" placeholder="搜索应用..." value="{{ search_query }}">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <select name="category" class="form-select">
+                        <option value="">所有分类</option>
+                        {% for cat_id, cat_name in categories %}
+                        <option value="{{ cat_id }}" {% if selected_category == cat_id %}selected{% endif %}>
+                            {{ cat_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select name="os" class="form-select">
+                        <option value="">所有系统</option>
+                        {% for os_id, os_name in os_versions %}
+                        <option value="{{ os_id }}" {% if selected_os == os_id %}selected{% endif %}>
+                            {{ os_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">筛选</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 应用列表 -->
+    {% for category, apps in apps_by_category.items %}
+    {% if apps %}
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">{{ category }}</h5>
+        </div>
+        <div class="card-body">
+            <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+                {% for app in apps %}
+                <div class="col">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                {% if app.icon %}
+                                <img src="{{ app.icon.url }}" alt="{{ app.name }}" class="me-3" style="width: 48px; height: 48px;">
+                                {% else %}
+                                <div class="me-3">
+                                    <i class="fas fa-cube fa-2x text-primary"></i>
+                                </div>
+                                {% endif %}
+                                <div>
+                                    <h5 class="card-title mb-0">{{ app.name }}</h5>
+                                </div>
+                            </div>
+                            <p class="card-text">{{ app.description }}</p>
+                            
+                            <!-- 版本选择 -->
+                            <div class="mb-3">
+                                <label class="form-label">选择版本</label>
+                                <select class="form-select version-select" data-app-name="{{ app.name }}">
+                                    <option value="">请选择版本...</option>
+                                    {% for version in app.versions %}
+                                    <option value="{{ version.id }}">
+                                        {{ version.version }} ({{ version.os_display }})
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-transparent">
+                            <div class="d-flex justify-content-between align-items-center">
+                                {% if app.homepage %}
+                                <a href="{{ app.homepage }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                    <i class="fas fa-external-link-alt"></i> 官网
+                                </a>
+                                {% endif %}
+                                <button class="btn btn-sm btn-primary install-btn" 
+                                        data-app-name="{{ app.name }}" 
+                                        disabled>
+                                    <i class="fas fa-download"></i> 安装
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+
+<!-- 安装进度模态框 -->
+<div class="modal fade" id="installModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">安装进度</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="terminal bg-dark text-light p-3" style="height: 400px; overflow-y: auto; font-family: monospace;">
+                    <div id="terminal-output"></div>
+                </div>
+                <div class="progress mt-3">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const installModal = new bootstrap.Modal(document.getElementById('installModal'));
+let installationId = null;
+let statusInterval = null;
+
+// 监听版本选择
+document.querySelectorAll('.version-select').forEach(select => {
+    select.addEventListener('change', function() {
+        const appName = this.dataset.appName;
+        const installBtn = document.querySelector(`.install-btn[data-app-name="${appName}"]`);
+        if (installBtn) {
+            installBtn.disabled = !this.value;
+            if (this.value) {
+                installBtn.onclick = () => installApp(this.value, appName);
+            }
+        }
+    });
+});
+
+function installApp(appId, appName) {
+    // 显示安装窗口
+    const terminalOutput = document.getElementById('terminal-output');
+    if (terminalOutput) {
+        terminalOutput.innerHTML = `准备安装 ${appName}...\n`;
+    }
+    installModal.show();
+    
+    // 获取CSRF令牌
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    
+    // 发送安装请求
+    fetch(`/apps/${appId}/install/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({}) // 添加空的请求体
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.status === 'success') {
+            installationId = data.installation_id;
+            updateInstallationStatus();
+            // 启动状态更新定时器
+            statusInterval = setInterval(updateInstallationStatus, 2000);
+        } else {
+            appendTerminalOutput('安装失败: ' + data.message);
+        }
+    })
+    .catch(error => {
+        appendTerminalOutput('发生错误: ' + error.message);
+    });
+}
+
+function updateInstallationStatus() {
+    if (!installationId) return;
+    
+    fetch(`/apps/installation/${installationId}/status/`)
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        // 更新进度条和终端输出
+        const progressBar = document.querySelector('.progress-bar');
+        if (progressBar) {
+            switch (data.status) {
+                case 'installing':
+                    progressBar.style.width = '50%';
+                    appendTerminalOutput('正在安装...');
+                    break;
+                case 'success':
+                    progressBar.style.width = '100%';
+                    progressBar.classList.remove('progress-bar-animated');
+                    clearInterval(statusInterval);
+                    appendTerminalOutput('安装完成！');
+                    break;
+                case 'failed':
+                    progressBar.style.width = '100%';
+                    progressBar.classList.remove('progress-bar-animated', 'bg-primary');
+                    progressBar.classList.add('bg-danger');
+                    clearInterval(statusInterval);
+                    appendTerminalOutput('安装失败: ' + data.error_message);
+                    break;
+            }
+        }
+        
+        // 如果安装完成，清除定时器
+        if (data.status === 'success' || data.status === 'failed') {
+            clearInterval(statusInterval);
+        }
+    })
+    .catch(error => {
+        appendTerminalOutput('检查状态时发生错误: ' + error.message);
+        clearInterval(statusInterval);
+    });
+}
+
+function appendTerminalOutput(text) {
+    const terminal = document.getElementById('terminal-output');
+    if (terminal) {
+        terminal.innerHTML += text + '\n';
+        terminal.scrollTop = terminal.scrollHeight;
+    }
+}
+
+// 模态框关闭时清理
+document.getElementById('installModal').addEventListener('hidden.bs.modal', function () {
+    if (statusInterval) {
+        clearInterval(statusInterval);
+    }
+    installationId = null;
+    document.querySelector('.progress-bar').style.width = '0%';
+    document.querySelector('.progress-bar').classList.add('progress-bar-animated', 'bg-primary');
+    document.querySelector('.progress-bar').classList.remove('bg-danger');
+});
+</script>
+{% endblock %} 

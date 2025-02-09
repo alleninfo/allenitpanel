@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block title %}导入导出 - {{ database.name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6">
+        <!-- 导出选项 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-file-export"></i> 导出数据库
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'database_export' database.pk %}">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">导出内容</label>
+                        <div class="form-check">
+                            <input type="checkbox" name="export_structure" class="form-check-input" id="exportStructure" checked>
+                            <label class="form-check-label" for="exportStructure">
+                                导出表结构
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" name="export_data" class="form-check-input" id="exportData" checked>
+                            <label class="form-check-label" for="exportData">
+                                导出数据
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">压缩方式</label>
+                        <select name="compression" class="form-select">
+                            <option value="none">不压缩</option>
+                            <option value="gzip">GZIP</option>
+                            <option value="zip">ZIP</option>
+                        </select>
+                    </div>
+                    
+                    <div class="text-end">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-file-export"></i> 开始导出
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 导出历史 -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-history"></i> 导出历史
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if export_history %}
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>导出时间</th>
+                                <th>文件大小</th>
+                                <th>备注</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for backup in export_history %}
+                            <tr>
+                                <td>{{ backup.created_at|date:"Y-m-d H:i:s" }}</td>
+                                <td>{{ backup.size|filesizeformat }}</td>
+                                <td>{{ backup.note }}</td>
+                                <td>
+                                    <div class="btn-group">
+                                        <a href="{{ backup.backup_file.url }}" class="btn btn-sm btn-primary">
+                                            <i class="fas fa-download"></i>
+                                        </a>
+                                        <button class="btn btn-sm btn-danger" onclick="deleteExport({{ backup.pk }})">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-center mb-0">暂无导出记录</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <!-- 导入选项 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-file-import"></i> 导入数据库
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'database_import' database.pk %}" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">选择文件</label>
+                        <input type="file" name="import_file" class="form-control" accept=".sql,.gz,.zip" required>
+                        <div class="form-text">支持 .sql、.sql.gz、.sql.zip 格式的文件</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input type="checkbox" name="clear_database" class="form-check-input" id="clearDatabase">
+                            <label class="form-check-label" for="clearDatabase">
+                                导入前清空数据库
+                            </label>
+                        </div>
+                        <div class="form-text text-danger">请谨慎使用此选项，清空操作不可恢复</div>
+                    </div>
+                    
+                    <div class="text-end">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-file-import"></i> 开始导入
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 导入历史 -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-history"></i> 导入历史
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if import_history %}
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>导入时间</th>
+                                <th>文件名</th>
+                                <th>状态</th>
+                                <th>备注</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for import_record in import_history %}
+                            <tr>
+                                <td>{{ import_record.created_at|date:"Y-m-d H:i:s" }}</td>
+                                <td>{{ import_record.file_name }}</td>
+                                <td>
+                                    {% if import_record.status == 'success' %}
+                                    <span class="badge bg-success">成功</span>
+                                    {% elif import_record.status == 'failed' %}
+                                    <span class="badge bg-danger" title="{{ import_record.error }}">失败</span>
+                                    {% else %}
+                                    <span class="badge bg-warning">进行中</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ import_record.note }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-center mb-0">暂无导入记录</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 删除导出记录
+function deleteExport(exportId) {
+    if (!confirm('确定要删除此导出记录吗？')) {
+        return;
+    }
+    
+    fetch(`/databases/{{ database.pk }}/export/${exportId}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    }).then(response => {
+        if (response.ok) {
+            location.reload();
+        }
+    });
+}
+
+// 表单验证
+document.querySelector('form').addEventListener('submit', function(e) {
+    const exportStructure = document.getElementById('exportStructure');
+    const exportData = document.getElementById('exportData');
+    
+    if (!exportStructure.checked && !exportData.checked) {
+        e.preventDefault();
+        alert('请至少选择一项导出内容');
+    }
+});
+</script>
+{% endblock %} 
