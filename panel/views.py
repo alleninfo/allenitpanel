@@ -119,6 +119,14 @@ def app_store(request):
     if search:
         applications = applications.filter(name__icontains=search)
     
+    # 获取已安装应用的信息
+    installed_apps = ApplicationInstallation.objects.select_related('application').filter(
+        user=request.user
+    ).exclude(status='failed').order_by('-started_at')
+    
+    # 创建已安装应用ID集合
+    installed_app_ids = set(inst.application.id for inst in installed_apps)
+    
     # 按分类和名称分组应用
     apps_by_category = {}
     for cat, cat_name in categories:
@@ -134,7 +142,8 @@ def app_store(request):
                     'category': app.category,
                     'icon': app.icon,
                     'homepage': app.homepage,
-                    'versions': []
+                    'versions': [],
+                    'installation_status': app.id in installed_app_ids
                 }
             # 添加版本信息
             grouped_apps[app.name]['versions'].append({
@@ -153,6 +162,7 @@ def app_store(request):
         'selected_category': category,
         'selected_os': os_version,
         'search_query': search,
+        'installed_apps': installed_apps,
     }
     return render(request, 'panel/app_store.html', context)
 
@@ -253,3 +263,67 @@ def app_install_status(request, installation_id):
         'error_message': installation.error_message,
         'completed_at': installation.completed_at,
     })
+
+@login_required
+def app_uninstall(request, app_id, installation_id):
+    """卸载应用"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': '仅支持POST请求'}, status=405)
+    
+    app = get_object_or_404(Application, pk=app_id)
+    installation = get_object_or_404(ApplicationInstallation, pk=installation_id, user=request.user)
+    
+    if not app.uninstall_script:
+        return JsonResponse({'status': 'error', 'message': '该应用不支持卸载'}, status=400)
+    
+    # 记录审计日志
+    AuditLog.objects.create(
+        user=request.user,
+        action=f'卸载应用 {app.name} {app.version}',
+        ip_address=request.META.get('REMOTE_ADDR')
+    )
+    
+    try:
+        # 创建临时脚本文件
+        import tempfile
+        import subprocess
+        import os
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as script_file:
+            script_file.write(app.uninstall_script)
+            script_path = script_file.name
+        
+        # 设置脚本权限
+        os.chmod(script_path, 0o755)
+        
+        # 执行卸载脚本
+        process = subprocess.run(
+            [script_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=True,
+            text=True
+        )
+        
+        if process.returncode == 0:
+            # 删除安装记录
+            installation.delete()
+            return JsonResponse({'status': 'success'})
+        else:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'卸载失败: {process.stderr}'
+            }, status=500)
+            
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': f'卸载过程中发生错误: {str(e)}'
+        }, status=500)
+    finally:
+        # 清理临时文件
+        if 'script_path' in locals():
+            try:
+                os.unlink(script_path)
+            except:
+                pass
