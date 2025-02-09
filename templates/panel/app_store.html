@@ -237,7 +237,8 @@ document.querySelectorAll('.version-select').forEach(select => {
         if (installBtn) {
             installBtn.disabled = !this.value;
             if (this.value) {
-                installBtn.onclick = () => installApp(this.value, appName);
+                const appId = this.value;
+                installBtn.onclick = () => installApp(appId, appName);
             }
         }
     });
@@ -330,7 +331,7 @@ function uninstallApp(appId, installationId) {
 function updateInstallationStatus() {
     if (!installationId) return;
     
-    fetch(`/apps/install/${installationId}/status/`)
+    fetch(`/apps/installation/${installationId}/status/`)
     .then(response => response.json())
     .then(data => {
         if (data.output) {
@@ -350,7 +351,7 @@ function updateInstallationStatus() {
                 // 3秒后刷新页面
                 setTimeout(() => window.location.reload(), 3000);
             } else {
-                appendTerminalOutput('安装失败: ' + data.error);
+                appendTerminalOutput('安装失败: ' + (data.error_message || '未知错误'));
             }
         }
     })

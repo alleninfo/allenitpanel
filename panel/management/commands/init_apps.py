@@ -151,9 +151,7 @@ mysql_secure_installation
 # 安装Nginx {version} 在{os}
 dnf -y install nginx
 systemctl enable --now nginx
-firewall-cmd --permanent --add-service=http
-firewall-cmd --permanent --add-service=https
-firewall-cmd --reload
+
 '''
 
     def get_redis_install_script(self, version, os):
@@ -162,8 +160,7 @@ firewall-cmd --reload
 # 安装Redis {version} 在{os}
 dnf -y install redis
 systemctl enable --now redis
-firewall-cmd --permanent --add-port=6379/tcp
-firewall-cmd --reload
+
 '''
 
     def get_phpmyadmin_install_script(self, version, os):
