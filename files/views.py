@@ -27,13 +27,28 @@ def file_browse(request):
     current_path = request.GET.get('path', '/')
     current_path = os.path.normpath(current_path)
     
-    # 防止访问上级目录
-    if '..' in current_path:
-        messages.error(request, '非法的路径')
+    # 防止访问特殊目录
+    sensitive_dirs = {'/proc', '/sys', '/run', '/boot', '/etc/shadow', '/etc/passwd', '/dev'}
+    if any(current_path.startswith(sensitive_dir) for sensitive_dir in sensitive_dirs):
+        messages.error(request, '访问被拒绝：系统敏感目录')
         return redirect('file_browse')
     
-    # 获取完整路径
-    full_path = os.path.join(settings.MEDIA_ROOT, current_path.lstrip('/'))
+    try:
+        # 直接使用 Path 对象处理路径，避免符号链接循环
+        path_obj = Path(current_path).resolve(strict=False)
+        full_path = str(path_obj)
+        
+        # 检查解析后的路径是否在敏感目录中
+        if any(full_path.startswith(sensitive_dir) for sensitive_dir in sensitive_dirs):
+            messages.error(request, '访问被拒绝：系统敏感目录')
+            return redirect('file_browse')
+            
+    except RuntimeError as e:
+        messages.error(request, '符号链接解析错误')
+        return redirect('file_browse')
+    except Exception as e:
+        messages.error(request, f'路径错误：{str(e)}')
+        return redirect('file_browse')
     
     # 如果路径不存在，创建目录
     if not os.path.exists(full_path):
@@ -320,9 +335,25 @@ def file_share_download(request, token):
 def get_dir_size(path):
     """获取目录大小"""
     total = 0
-    for entry in os.scandir(path):
-        if entry.is_file():
-            total += entry.stat().st_size
-        elif entry.is_dir():
-            total += get_dir_size(entry.path)
+    try:
+        for entry in os.scandir(path):
+            try:
+                # 使用 Path 对象安全地处理符号链接
+                path_obj = Path(entry.path).resolve(strict=False)
+                
+                # 如果是符号链接，跳过
+                if os.path.islink(entry.path):
+                    continue
+                    
+                if entry.is_file(follow_symlinks=False):
+                    total += entry.stat(follow_symlinks=False).st_size
+                elif entry.is_dir(follow_symlinks=False):
+                    total += get_dir_size(entry.path)
+            except (OSError, RuntimeError):
+                # 忽略符号链接错误和其他文件访问错误
+                continue
+    except (OSError, PermissionError):
+        # 如果目录不可访问，返回0
+        return 0
+        
     return total
