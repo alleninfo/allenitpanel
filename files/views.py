@@ -467,3 +467,84 @@ def remote_download(request):
         return JsonResponse({'status': 'success'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+@login_required
+def file_edit(request):
+    """编辑文件"""
+    file_path = request.GET.get('path', '')
+    
+    # 检查文件是否存在
+    if not os.path.isfile(file_path):
+        messages.error(request, '文件不存在')
+        return redirect('file_browse')
+    
+    try:
+        # 尝试以文本方式读取文件
+        encodings = ['utf-8', 'gbk', 'iso-8859-1', 'ascii']
+        content = None
+        
+        for encoding in encodings:
+            try:
+                with open(file_path, 'r', encoding=encoding) as f:
+                    content = f.read()
+                break
+            except UnicodeDecodeError:
+                continue
+                
+        if content is None:
+            # 如果所有编码都失败，可能是二进制文件
+            messages.warning(request, '此文件可能是二进制文件，编辑时请小心')
+            # 尝试以二进制方式读取，并转换为十六进制显示
+            with open(file_path, 'rb') as f:
+                binary_content = f.read()
+                content = binary_content.hex()
+        
+        return_path = os.path.dirname(file_path)
+        
+        context = {
+            'file_path': file_path,
+            'content': content,
+            'return_path': return_path,
+            'is_binary': content and all(ord(c) < 32 and c != '\n' and c != '\r' and c != '\t' for c in content[:1024])
+        }
+        return render(request, 'files/editor.html', context)
+        
+    except Exception as e:
+        messages.error(request, f'读取文件失败：{str(e)}')
+        return redirect('file_browse')
+
+@login_required
+def file_edit_save(request):
+    """保存编辑后的文件内容"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': '不支持的请求方法'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        file_path = data.get('path')
+        content = data.get('content')
+        
+        if not file_path or content is None:
+            return JsonResponse({'status': 'error', 'message': '参数错误'}, status=400)
+        
+        # 检查文件是否存在
+        if not os.path.isfile(file_path):
+            return JsonResponse({'status': 'error', 'message': '文件不存在'}, status=404)
+        
+        # 尝试以文本方式保存
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+        except UnicodeEncodeError:
+            # 如果是二进制内容（十六进制格式），转换回二进制保存
+            try:
+                binary_content = bytes.fromhex(content)
+                with open(file_path, 'wb') as f:
+                    f.write(binary_content)
+            except ValueError:
+                return JsonResponse({'status': 'error', 'message': '无效的二进制内容'}, status=400)
+            
+        return JsonResponse({'status': 'success'})
+        
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)

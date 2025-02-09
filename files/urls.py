@@ -15,4 +15,6 @@ urlpatterns = [
     path('batch-delete/', views.batch_delete, name='batch_delete'),
     path('compress/', views.compress_files, name='compress_files'),
     path('remote-download/', views.remote_download, name='remote_download'),
+    path('edit/', views.file_edit, name='file_edit'),
+    path('edit/save/', views.file_edit_save, name='file_edit_save'),
 ] 

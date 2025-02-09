@@ -103,7 +103,7 @@
                     </tr>
                     {% endif %}
                     {% for item in items %}
-                    <tr class="file-item" {% if not item.is_dir %}onclick="showFileActions('{{ item.path }}')"{% endif %}>
+                    <tr class="file-item" ondblclick="handleDblClick('{{ item.path }}', {{ item.is_dir|lower }})">
                         <td>
                             <input type="checkbox" class="file-checkbox" data-path="{{ item.path }}">
                         </td>
@@ -129,6 +129,11 @@
                                 <button class="btn btn-sm btn-info" onclick="event.stopPropagation(); downloadFile('{{ item.path }}')">
                                     <i class="fas fa-download"></i> 下载
                                 </button>
+                                {% endif %}
+                                {% if not item.is_dir %}
+                                <a href="{% url 'file_edit' %}?path={{ item.path }}" class="btn btn-sm btn-info">
+                                    <i class="fas fa-edit"></i> 编辑
+                                </a>
                                 {% endif %}
                                 <button class="btn btn-sm btn-warning" onclick="event.stopPropagation(); showRenameModal('{{ item.path }}', '{{ item.name }}')">
                                     <i class="fas fa-edit"></i> 重命名
@@ -580,5 +585,37 @@ function startRemoteDownload() {
         }
     });
 }
+
+function handleDblClick(path, isDir) {
+    if (isDir) {
+        navigateTo(path);
+    } else {
+        // 所有文件都可以尝试编辑
+        window.location.href = `/files/edit/?path=${encodeURIComponent(path)}`;
+    }
+}
+
+// 阻止单击事件与双击事件的冲突
+let clickTimer = null;
+document.querySelectorAll('.file-item').forEach(item => {
+    item.addEventListener('click', function(e) {
+        if (clickTimer) {
+            clearTimeout(clickTimer);
+            clickTimer = null;
+        } else {
+            clickTimer = setTimeout(() => {
+                clickTimer = null;
+                // 这里处理单击事件
+                if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A') {
+                    const checkbox = this.querySelector('.file-checkbox');
+                    if (checkbox) {
+                        checkbox.checked = !checkbox.checked;
+                        updateButtonStates();
+                    }
+                }
+            }, 200);
+        }
+    });
+});
 </script>
 {% endblock %} 

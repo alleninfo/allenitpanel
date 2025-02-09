@@ -1,0 +1,170 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col">
+            <h4>编辑文件: {{ file_path }}</h4>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group">
+                <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                    主题
+                </button>
+                <ul class="dropdown-menu" id="themeMenu">
+                    <li><a class="dropdown-item" href="#" data-theme="monokai">Monokai</a></li>
+                    <li><a class="dropdown-item" href="#" data-theme="github">GitHub</a></li>
+                    <li><a class="dropdown-item" href="#" data-theme="tomorrow">Tomorrow</a></li>
+                    <li><a class="dropdown-item" href="#" data-theme="twilight">Twilight</a></li>
+                    <li><a class="dropdown-item" href="#" data-theme="xcode">XCode</a></li>
+                </ul>
+            </div>
+            <div class="btn-group ms-2">
+                <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                    字体大小
+                </button>
+                <ul class="dropdown-menu" id="fontSizeMenu">
+                    <li><a class="dropdown-item" href="#" data-size="12">12px</a></li>
+                    <li><a class="dropdown-item" href="#" data-size="14">14px</a></li>
+                    <li><a class="dropdown-item" href="#" data-size="16">16px</a></li>
+                    <li><a class="dropdown-item" href="#" data-size="18">18px</a></li>
+                    <li><a class="dropdown-item" href="#" data-size="20">20px</a></li>
+                </ul>
+            </div>
+            <div class="form-check form-switch d-inline-block ms-2">
+                <input class="form-check-input" type="checkbox" id="autoSaveSwitch" checked>
+                <label class="form-check-label" for="autoSaveSwitch">自动保存</label>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col">
+            <div id="editor" style="height: 600px;">{{ content }}</div>
+            <div class="mt-3">
+                <button class="btn btn-primary" onclick="saveFile()">保存</button>
+                <span id="saveStatus" class="ms-2 text-muted"></span>
+                <a href="{% url 'file_browse' %}?path={{ return_path }}" class="btn btn-secondary">返回</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock content %}
+
+{% block extra_css %}
+{{ block.super }}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.min.css" rel="stylesheet">
+<style>
+    #editor {
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js"></script>
+<script>
+    // 初始化编辑器
+    var editor = ace.edit("editor");
+    editor.setTheme("ace/theme/monokai");
+    
+    // 加载用户偏好设置
+    const userPrefs = JSON.parse(localStorage.getItem('editorPrefs') || '{}');
+    editor.setTheme("ace/theme/" + (userPrefs.theme || "monokai"));
+    editor.setFontSize(userPrefs.fontSize || "14px");
+    
+    // 配置编辑器选项
+    editor.setOptions({
+        enableBasicAutocompletion: true,
+        enableSnippets: true,
+        enableLiveAutocompletion: true,
+        showPrintMargin: false,
+        highlightActiveLine: true,
+        wrap: true
+    });
+    
+    // 根据文件扩展名设置语法高亮
+    var filePath = "{{ file_path }}";
+    var fileExt = filePath.split('.').pop().toLowerCase();
+    var modeMap = {
+        'txt': 'text',
+        'js': 'javascript',
+        'py': 'python',
+        'html': 'html',
+        'css': 'css',
+        'json': 'json',
+        'xml': 'xml',
+        'md': 'markdown',
+        'sh': 'sh',
+        'php': 'php',
+        'sql': 'sql',
+        'ini': 'ini',
+        'conf': 'ini',
+        'yaml': 'yaml',
+        'yml': 'yaml'
+    };
+    
+    editor.session.setMode("ace/mode/" + (modeMap[fileExt] || 'text'));
+    
+    // 自动保存功能
+    let autoSaveTimer;
+    const AUTO_SAVE_DELAY = 3000; // 3秒后自动保存
+    
+    editor.on('change', function() {
+        if (document.getElementById('autoSaveSwitch').checked) {
+            clearTimeout(autoSaveTimer);
+            autoSaveTimer = setTimeout(saveFile, AUTO_SAVE_DELAY);
+            document.getElementById('saveStatus').textContent = '编辑中...';
+        }
+    });
+    
+    // 保存文件
+    function saveFile() {
+        document.getElementById('saveStatus').textContent = '保存中...';
+        fetch('{% url "file_edit_save" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                path: '{{ file_path }}',
+                content: editor.getValue()
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                document.getElementById('saveStatus').textContent = '已保存 ' + 
+                    new Date().toLocaleTimeString();
+            } else {
+                document.getElementById('saveStatus').textContent = '保存失败：' + 
+                    data.message;
+            }
+        })
+        .catch(error => {
+            document.getElementById('saveStatus').textContent = '保存失败：' + error;
+        });
+    }
+    
+    // 主题切换
+    document.getElementById('themeMenu').addEventListener('click', function(e) {
+        if (e.target.dataset.theme) {
+            editor.setTheme("ace/theme/" + e.target.dataset.theme);
+            userPrefs.theme = e.target.dataset.theme;
+            localStorage.setItem('editorPrefs', JSON.stringify(userPrefs));
+        }
+    });
+    
+    // 字体大小切换
+    document.getElementById('fontSizeMenu').addEventListener('click', function(e) {
+        if (e.target.dataset.size) {
+            editor.setFontSize(e.target.dataset.size + "px");
+            userPrefs.fontSize = e.target.dataset.size + "px";
+            localStorage.setItem('editorPrefs', JSON.stringify(userPrefs));
+        }
+    });
+</script>
+{% endblock %}
