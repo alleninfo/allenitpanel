@@ -10,6 +10,7 @@ import subprocess
 from .utils import get_installed_php_versions
 from django.db import connection  # 添加这个导入
 from django.http import JsonResponse
+from panel.models import ApplicationInstallation, Application
 
 @login_required
 def website_list(request):
@@ -22,16 +23,13 @@ def website_create(request):
         form = WebsiteForm(request.POST)
         if form.is_valid():
             try:
-                # 先创建网站对象
                 website = form.save(commit=False)
                 website.user = request.user
                 website.save()
                 
-                # 创建网站目录
                 path = os.path.join('/www/wwwroot', website.domain)
                 os.makedirs(path, exist_ok=True)
                 
-                # 更新网站路径并保存
                 Website.objects.filter(id=website.id).update(path=path)
                 
                 messages.success(request, '网站创建成功！')
@@ -45,28 +43,54 @@ def website_create(request):
         form = WebsiteForm()
 
     # 获取已安装的 PHP 版本
-    def get_installed_php_versions():
-        try:
-            # 获取 /www/server/php/ 目录下的所有文件夹
-            php_path = '/www/server/php'
-            if os.path.exists(php_path):
-                versions = [d for d in os.listdir(php_path) if os.path.isdir(os.path.join(php_path, d))]
-                return sorted(versions)
-        except Exception:
-            pass
-        return []
+    installed_php_versions = ApplicationInstallation.objects.filter(
+        application__name__icontains='php',  # 使用 icontains 替代 ilike
+        status='success'
+    ).select_related('application').values_list(
+        'application__version', 
+        flat=True
+    ).distinct()
+    
+    # 转换查询结果为列表并排序
+    installed_php_versions = list(installed_php_versions)
+    
+    # 如果数据库中没有找到已安装的版本，提供默认版本列表
+    if not installed_php_versions:
+        # 先尝试直接从 Application 表获取 PHP 版本
+        php_versions = Application.objects.filter(
+            name__icontains='php'  # 使用 icontains 替代 ilike
+        ).values_list('version', flat=True).distinct()
+        
+        installed_php_versions = list(php_versions) or ['7.4', '8.0', '8.1', '8.2']
+    
+    # 版本号排序
+    try:
+        installed_php_versions = sorted(
+            installed_php_versions,
+            key=lambda x: [int(i) for i in x.split('.')]
+        )
+    except (ValueError, AttributeError):
+        # 如果排序出错，至少确保有序显示
+        installed_php_versions = sorted(installed_php_versions)
 
     context = {
         'form': form,
-        'installed_php_versions': get_installed_php_versions()
+        'installed_php_versions': installed_php_versions
     }
     return render(request, 'websites/form.html', context)
 
 @login_required
 def website_edit(request, pk):
     website = get_object_or_404(Website, pk=pk)
-    installed_php_versions = get_installed_php_versions()
-    print(f"检测到的PHP版本: {installed_php_versions}")  # 添加调试信息
+    
+    # 从 ApplicationInstallation 获取已安装的 PHP 版本
+    installed_php_versions = ApplicationInstallation.objects.filter(
+        application__name__startswith='PHP',
+        status='installed'
+    ).values_list('application__version', flat=True)
+    
+    # 排序版本号
+    installed_php_versions = sorted(installed_php_versions)
     
     if request.method == 'POST':
         form = WebsiteForm(request.POST, instance=website)
@@ -278,18 +302,22 @@ def website_form(request, pk=None):
     else:
         form = WebsiteForm(instance=website)
 
-    # 从系统配置获取已安装的PHP版本
-    php_versions = SystemConfig.objects.filter(
-        name__startswith='php_',
+    # 从 ApplicationInstallation 获取已安装的 PHP 版本
+    php_versions = ApplicationInstallation.objects.filter(
+        application__name__startswith='PHP',
         status='installed'
-    ).values_list('name', flat=True)
+    ).values_list(
+        'application__version', 
+        flat=True
+    )
     
-    # 处理版本号格式
-    php_versions = [version.replace('php_', '') for version in php_versions]
+    # 排序版本号
+    php_versions = sorted(php_versions)
     
     context = {
         'form': form,
         'php_versions': php_versions,
         'website': website,
     }
+    
     return render(request, 'websites/form.html', context)

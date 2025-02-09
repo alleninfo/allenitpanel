@@ -14,8 +14,24 @@
                 <div class="card-body">
                     <form method="post" class="form">
                         {% csrf_token %}
-                        {{ form|crispy }}
-                        
+                        <div class="mb-3">
+                            <label class="form-label">网站名称</label>
+                            {{ form.name }}
+                            <div class="form-text">网站的名称，仅用于后台管理</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">域名</label>
+                            {{ form.domain }}
+                            <div class="form-text">网站的访问域名，例如：www.example.com</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">服务器类型</label>
+                            {{ form.server_type }}
+                            <div class="form-text">选择网站使用的Web服务器类型</div>
+                        </div>
+
                         <div class="mb-3">
                             <label class="form-label">端口</label>
                             <input type="number" name="port" class="form-control" value="{{ form.instance.port|default:'80' }}" min="1" max="65535">
@@ -26,8 +42,10 @@
                             <label class="form-label">PHP版本</label>
                             <select name="php_version" class="form-control">
                                 <option value="">不使用PHP</option>
-                                {% for version in php_versions %}
-                                    <option value="{{ version }}" {% if form.instance.php_version == version %}selected{% endif %}>PHP {{ version }}</option>
+                                {% for version in installed_php_versions %}
+                                <option value="{{ version }}" {% if website.php_version == version %}selected{% endif %}>
+                                    PHP {{ version }}
+                                </option>
                                 {% endfor %}
                             </select>
                             <div class="form-text">选择网站使用的PHP版本</div>
