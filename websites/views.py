@@ -11,6 +11,118 @@ from .utils import get_installed_php_versions
 from django.db import connection  # 添加这个导入
 from django.http import JsonResponse
 from panel.models import ApplicationInstallation, Application
+import re
+
+def setup_php_fpm(version, domain):
+    """设置 PHP-FPM 配置"""
+    version_num = version.replace('.', '')
+    port = f'90{version_num}'
+    
+    fpm_config_dir = f'/etc/php/php-fpm.d'
+    fpm_config_file = os.path.join(fpm_config_dir, 'www.conf')
+    
+    if os.path.exists(fpm_config_file):
+        backup_file = f'{fpm_config_file}.backup'
+        if not os.path.exists(backup_file):
+            shutil.copy2(fpm_config_file, backup_file)
+    
+    # 修改 PHP-FPM 配置，使用传入的 domain 参数
+    fpm_config = f"""[www]
+user = www
+group = www
+listen = 127.0.0.1:{port}
+listen.owner = www
+listen.group = www
+listen.mode = 0660
+pm = dynamic
+pm.max_children = 50
+pm.start_servers = 5
+pm.min_spare_servers = 5
+pm.max_spare_servers = 35
+pm.max_requests = 1000
+php_admin_value[error_log] = /www/wwwlogs/php{version_num}_error.log
+php_admin_flag[log_errors] = on
+php_admin_value[upload_max_filesize] = 32M
+
+; 添加打开目录的权限
+security.limit_extensions = .php .php3 .php4 .php5 .php7 .php8
+php_admin_value[open_basedir] = /www/wwwroot/{domain}/:/tmp/:/proc/
+"""
+    
+    os.makedirs(fpm_config_dir, exist_ok=True)
+    
+    with open(fpm_config_file, 'w') as f:
+        f.write(fpm_config)
+    
+    # 确保 PHP-FPM 目录权限正确
+    os.system(f'chown -R www:www {fpm_config_dir}')
+    os.system(f'chmod -R 755 {fpm_config_dir}')
+    
+    os.system(f'systemctl restart php{version_num}-fpm')
+    
+    return port
+
+def setup_nginx_and_www_user():
+    """设置 Nginx 配置并创建 www 用户"""
+    try:
+        # 创建 www 组和用户
+        os.system('groupadd -f www')
+        os.system('useradd -r -g www -s /sbin/nologin www 2>/dev/null || true')
+        
+        # 修改 Nginx 配置文件
+        nginx_conf = '/etc/nginx/nginx.conf'
+        
+        # 读取当前配置
+        with open(nginx_conf, 'r') as f:
+            config_lines = f.readlines()
+        
+        # 处理配置文件
+        new_config = []
+        user_set = False
+        
+        # 检查第一个非空行和注释行
+        for line in config_lines:
+            line = line.strip()
+            if not user_set and line and not line.startswith('#'):
+                if line.startswith('user '):
+                    new_config.append('user www;\n')
+                    user_set = True
+                else:
+                    new_config.append('user www;\n')
+                    new_config.append(line + '\n')
+                    user_set = True
+                continue
+            new_config.append(line + '\n')
+        
+        # 确保配置文件以 } 结尾
+        last_line = new_config[-1].strip()
+        if last_line and last_line != '}':
+            new_config.append('}\n')
+        
+        # 写回配置文件
+        with open(nginx_conf, 'w') as f:
+            f.writelines(new_config)
+        
+        # 设置目录权限
+        os.system('chown -R www:www /www/wwwroot')
+        os.system('chmod -R 755 /www/wwwroot')
+        os.system('chown -R www:www /www/wwwlogs')
+        os.system('chmod -R 755 /www/wwwlogs')
+        
+        # 测试 Nginx 配置
+        test_result = os.system('nginx -t')
+        if test_result == 0:
+            os.system('systemctl restart nginx')
+            return True
+        else:
+            # 如果测试失败，还原配置文件
+            with open(nginx_conf, 'w') as f:
+                f.writelines(config_lines)
+            return False
+            
+    except Exception as e:
+        print(f"设置 Nginx 和 www 用户时出错: {str(e)}")
+        return False
 
 @login_required
 def website_list(request):
@@ -23,21 +135,114 @@ def website_create(request):
         form = WebsiteForm(request.POST)
         if form.is_valid():
             try:
+                # 先创建网站对象
                 website = form.save(commit=False)
                 website.user = request.user
+                website.php_version = form.cleaned_data['php_version']
                 website.save()
                 
+                # 创建网站目录并设置正确的权限
                 path = os.path.join('/www/wwwroot', website.domain)
                 os.makedirs(path, exist_ok=True)
                 
-                Website.objects.filter(id=website.id).update(path=path)
+                # 创建网站默认首页
+                index_content = """<!DOCTYPE html>
+<html>
+<head>
+    <title>Welcome to {}</title>
+</head>
+<body>
+    <h1>Welcome to {}</h1>
+    <p>Site is working!</p>
+</body>
+</html>""".format(website.domain, website.domain)
+                
+                with open(os.path.join(path, 'index.php'), 'w') as f:
+                    f.write(index_content)
+                
+                # 设置目录权限
+                os.system(f'chown -R www:www {path}')
+                os.system(f'chmod -R 755 {path}')
+                os.system(f'find {path} -type d -exec chmod 755 {{}} \\;')
+                os.system(f'find {path} -type f -exec chmod 644 {{}} \\;')
+                
+                # 传入 domain 参数
+                php_port = setup_php_fpm(website.php_version, website.domain)
+                
+                nginx_config = f"""server {{
+    listen {website.port};
+    server_name {website.domain};
+    root /www/wwwroot/{website.domain};
+    index index.php index.html index.htm;
+
+    access_log  /www/wwwlogs/{website.domain}.log;
+    error_log  /www/wwwlogs/{website.domain}.error.log;
+
+    # PHP 配置
+    location ~ [^/]\.php(/|$) {{
+        try_files $uri =404;
+        fastcgi_pass   127.0.0.1:{php_port};
+        fastcgi_index  index.php;
+        include        fastcgi.conf;
+        include        fastcgi_params;
+        fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
+        fastcgi_param  PHP_ADMIN_VALUE  "open_basedir=/www/wwwroot/{website.domain}/:/tmp/:/proc/";
+    }}
+
+    location / {{
+        try_files $uri $uri/ /index.php?$query_string;
+        if (!-e $request_filename) {{
+            rewrite ^(.*)$ /index.php?s=$1 last;
+            break;
+        }}
+    }}
+
+    # 允许访问目录
+    location ~ ^/(\.user.ini|\.htaccess|\.git|\.env|\.svn|\.project|LICENSE|README.md) {{
+        deny all;
+    }}
+
+    # 静态文件缓存
+    location ~ .*\.(gif|jpg|jpeg|png|bmp|swf|ico)$ {{
+        expires      30d;
+        access_log off;
+    }}
+
+    location ~ .*\.(js|css)?$ {{
+        expires      12h;
+        access_log off;
+    }}
+}}"""
+                
+                nginx_path = f'/www/server/panel/vhost/nginx/{website.domain}.conf'
+                os.makedirs(os.path.dirname(nginx_path), exist_ok=True)
+                
+                with open(nginx_path, 'w') as f:
+                    f.write(nginx_config)
+                
+                # 创建并设置日志目录权限
+                os.makedirs('/www/wwwlogs', exist_ok=True)
+                os.system('chown -R www:www /www/wwwlogs')
+                os.system('chmod -R 755 /www/wwwlogs')
+                
+                # 测试并重启 Nginx
+                if os.system('nginx -t') == 0:
+                    os.system('systemctl reload nginx')
+                else:
+                    messages.warning(request, 'Nginx 配置测试失败，请检查配置文件')
+
+                Website.objects.filter(id=website.id).update(
+                    path=path,
+                    nginx_config_path=nginx_path
+                )
                 
                 messages.success(request, '网站创建成功！')
                 return redirect('website_list')
+                
             except Exception as e:
                 if website.id:
                     website.delete()
-                messages.error(request, f'创建网站目录失败: {str(e)}')
+                messages.error(request, f'创建网站失败: {str(e)}')
                 return redirect('website_list')
     else:
         form = WebsiteForm()
@@ -222,61 +427,6 @@ def domain_delete(request, pk):
         return redirect('website_list')
     
     return redirect('website_list')
-
-def generate_nginx_config(website):
-    """生成Nginx配置文件"""
-    config_dir = '/etc/nginx/conf.d'
-    config_file = f'{config_dir}/{website.domain}.conf'
-    
-    # 准备域名列表
-    all_domains = [website.domain] + [domain.domain for domain in website.additional_domains.all()]
-    server_name = ' '.join(all_domains)
-    
-    # 网站根目录
-    root_path = os.path.join('/www/wwwroot', website.domain)
-    os.makedirs(root_path, exist_ok=True)
-    
-    config = f"""server {{
-    listen {website.port};
-    server_name {server_name};
-    root {root_path};
-    index index.html index.htm index.php;
-    
-    location / {{
-        try_files $uri $uri/ /index.php?$query_string;
-    }}
-    
-    # 错误页面
-    error_page 404 /404.html;
-    error_page 500 502 503 504 /50x.html;
-    location = /50x.html {{
-        root /www/wwwroot;
-    }}
-    """
-    
-    # 如果启用了PHP
-    if website.php_version:
-        config += f"""
-    # PHP配置
-    location ~ \.php$ {{
-        fastcgi_pass unix:/run/php/php{website.php_version}-fpm.sock;
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        include fastcgi_params;
-    }}
-    """
-    
-    config += "}\n"
-    
-    # 写入配置文件
-    with open(config_file, 'w') as f:
-        f.write(config)
-    
-    # 测试配置文件
-    os.system('nginx -t')
-    
-    # 重新加载Nginx
-    os.system('systemctl reload nginx')
 
 @login_required
 def website_mysql_status(request, pk):

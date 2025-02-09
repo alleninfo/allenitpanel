@@ -60,6 +60,7 @@ class Website(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     port = models.IntegerField(default=80, verbose_name='端口')
     path = models.CharField(max_length=255, blank=True, null=True, verbose_name='网站路径')
+    nginx_config_path = models.CharField(max_length=255, null=True, blank=True)
 
     @property
     def database_name(self):
