@@ -13,54 +13,7 @@ from django.http import JsonResponse
 from panel.models import ApplicationInstallation, Application
 import re
 
-def setup_php_fpm(version, domain):
-    """设置 PHP-FPM 配置"""
-    version_num = version.replace('.', '')
-    port = f'90{version_num}'
-    
-    fpm_config_dir = f'/etc/php/php-fpm.d'
-    fpm_config_file = os.path.join(fpm_config_dir, 'www.conf')
-    
-    if os.path.exists(fpm_config_file):
-        backup_file = f'{fpm_config_file}.backup'
-        if not os.path.exists(backup_file):
-            shutil.copy2(fpm_config_file, backup_file)
-    
-    # 修改 PHP-FPM 配置，使用传入的 domain 参数
-    fpm_config = f"""[www]
-user = www
-group = www
-listen = 127.0.0.1:{port}
-listen.owner = www
-listen.group = www
-listen.mode = 0660
-pm = dynamic
-pm.max_children = 50
-pm.start_servers = 5
-pm.min_spare_servers = 5
-pm.max_spare_servers = 35
-pm.max_requests = 1000
-php_admin_value[error_log] = /www/wwwlogs/php{version_num}_error.log
-php_admin_flag[log_errors] = on
-php_admin_value[upload_max_filesize] = 32M
 
-; 添加打开目录的权限
-security.limit_extensions = .php .php3 .php4 .php5 .php7 .php8
-php_admin_value[open_basedir] = /www/wwwroot/{domain}/:/tmp/:/proc/
-"""
-    
-    os.makedirs(fpm_config_dir, exist_ok=True)
-    
-    with open(fpm_config_file, 'w') as f:
-        f.write(fpm_config)
-    
-    # 确保 PHP-FPM 目录权限正确
-    os.system(f'chown -R www:www {fpm_config_dir}')
-    os.system(f'chmod -R 755 {fpm_config_dir}')
-    
-    os.system(f'systemctl restart php{version_num}-fpm')
-    
-    return port
 
 def setup_nginx_and_www_user():
     """设置 Nginx 配置并创建 www 用户"""
@@ -123,6 +76,60 @@ def setup_nginx_and_www_user():
     except Exception as e:
         print(f"设置 Nginx 和 www 用户时出错: {str(e)}")
         return False
+
+def setup_php_fpm(version, domain):
+    """设置 PHP-FPM 配置"""
+    version_num = version.replace('.', '')
+    port = f'90{version_num}'  # 例如：9074, 9080
+    
+    # 修改 PHP-FPM 配置文件路径
+    fpm_config_dir = f'/etc/php/php-fpm.d'
+    fpm_config_file = os.path.join(fpm_config_dir, 'www.conf')
+    
+    if os.path.exists(fpm_config_file):
+        backup_file = f'{fpm_config_file}.backup'
+        if not os.path.exists(backup_file):
+            shutil.copy2(fpm_config_file, backup_file)
+    
+    # 修改 PHP-FPM 配置，使用 TCP 端口监听
+    fpm_config = f"""[www]
+user = www
+group = www
+listen = 127.0.0.1:{port}
+listen.owner = www
+listen.group = www
+listen.mode = 0660
+listen.allowed_clients = 127.0.0.1
+
+pm = dynamic
+pm.max_children = 50
+pm.start_servers = 5
+pm.min_spare_servers = 5
+pm.max_spare_servers = 35
+pm.max_requests = 1000
+
+php_admin_value[error_log] = /www/wwwlogs/php{version_num}_error.log
+php_admin_flag[log_errors] = on
+php_admin_value[upload_max_filesize] = 32M
+
+; 添加打开目录的权限
+security.limit_extensions = .php .php3 .php4 .php5 .php7 .php8
+php_admin_value[open_basedir] = /www/wwwroot/{domain}/:/tmp/:/proc/
+"""
+    
+    os.makedirs(fpm_config_dir, exist_ok=True)
+    
+    with open(fpm_config_file, 'w') as f:
+        f.write(fpm_config)
+    
+    # 确保 PHP-FPM 目录权限正确
+    os.system(f'chown -R www:www {fpm_config_dir}')
+    os.system(f'chmod -R 755 {fpm_config_dir}')
+    
+    # 重启 PHP-FPM 服务
+    os.system(f'systemctl restart php{version_num}-fpm')
+    
+    return port
 
 @login_required
 def website_list(request):
@@ -214,7 +221,7 @@ def website_create(request):
     }}
 }}"""
                 
-                nginx_path = f'/www/server/panel/vhost/nginx/{website.domain}.conf'
+                nginx_path = f'/etc/nginx/conf.d/{website.domain}.conf'
                 os.makedirs(os.path.dirname(nginx_path), exist_ok=True)
                 
                 with open(nginx_path, 'w') as f:
