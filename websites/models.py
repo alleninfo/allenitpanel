@@ -64,6 +64,7 @@ class Website(models.Model):
     ssl_enabled = models.BooleanField(_('SSL状态'), default=False)
     created_at = models.DateTimeField(_('创建时间'), auto_now_add=True)
     updated_at = models.DateTimeField(_('更新时间'), auto_now=True)
+    port = models.IntegerField(default=80)
 
     @property
     def path(self):

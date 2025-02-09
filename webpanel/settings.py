@@ -26,7 +26,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'ddadfer3123affdsasafdsa'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
@@ -42,12 +42,11 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'crispy_forms',
     'crispy_bootstrap5',
-    'panel',
     'databases',
     'websites',
     'files',
     'system',
-    'webpanel.apps.WebpanelConfig',
+    'panel',
 ]
 
 MIDDLEWARE = [
@@ -126,14 +125,14 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = '/www/wwwroot/panel/static'
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),
 ]
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-MEDIA_URL = 'media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = '/media/'
+MEDIA_ROOT = '/www/backup/media'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -147,26 +146,23 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 LOGIN_REDIRECT_URL = 'dashboard'
 LOGIN_URL = 'login'
 
-MEDIA_ROOT = '/www/backup/media'
-MEDIA_URL = '/media/'
-
 # 添加日志配置
 LOGGING = {
-    'version': 1,
+  'version': 1,
     'disable_existing_loggers': False,
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
         },
-        'file': {
-            'class': 'logging.FileHandler',
-            'filename': 'debug.log',
-        },
     },
-    'loggers': {
-        'django': {
-            'handlers': ['console', 'file'],
-            'level': 'DEBUG',
-        },
+    'root': {
+        'handlers': ['console'],
+        'level': 'WARNING',  # 将日志级别设置为 WARNING，这样会过滤掉大多数信息
     },
+    'django.server': {
+        'handlers': ['console'],
+        'level': 'WARNING',
+        'propagate': False,
+        },
+
 }

@@ -7,6 +7,7 @@ from panel.models import AuditLog
 import os
 import shutil
 import subprocess
+from .utils import get_installed_php_versions
 
 @login_required
 def website_list(request):
@@ -15,6 +16,10 @@ def website_list(request):
 
 @login_required
 def website_create(request):
+    # 获取已安装的PHP版本列表
+    installed_php_versions = get_installed_php_versions()
+    print(f"检测到的PHP版本: {installed_php_versions}")  # 添加调试信息
+    
     if request.method == 'POST':
         form = WebsiteForm(request.POST)
         if form.is_valid():
@@ -60,11 +65,18 @@ def website_create(request):
     else:
         form = WebsiteForm()
     
-    return render(request, 'websites/form.html', {'form': form})
+    context = {
+        'form': form,
+        'installed_php_versions': installed_php_versions,
+        'website': None,  # 添加这行
+    }
+    return render(request, 'websites/form.html', context)
 
 @login_required
 def website_edit(request, pk):
     website = get_object_or_404(Website, pk=pk)
+    installed_php_versions = get_installed_php_versions()
+    print(f"检测到的PHP版本: {installed_php_versions}")  # 添加调试信息
     
     if request.method == 'POST':
         form = WebsiteForm(request.POST, instance=website)
@@ -104,7 +116,12 @@ def website_edit(request, pk):
     else:
         form = WebsiteForm(instance=website)
     
-    return render(request, 'websites/form.html', {'form': form})
+    context = {
+        'form': form,
+        'installed_php_versions': installed_php_versions,
+        'website': website,  # 添加这行
+    }
+    return render(request, 'websites/form.html', context)
 
 @login_required
 def website_delete(request, pk):

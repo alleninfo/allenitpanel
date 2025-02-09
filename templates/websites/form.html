@@ -16,6 +16,25 @@
                         {% csrf_token %}
                         {{ form|crispy }}
                         
+                        <div class="mb-3">
+                            <label class="form-label">端口</label>
+                            <input type="number" name="port" class="form-control" value="{{ form.instance.port|default:'80' }}" min="1" max="65535">
+                            <div class="form-text">网站访问端口，默认80</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">PHP版本</label>
+                            <select name="php_version" class="form-select">
+                                <option value="">不使用 PHP</option>
+                                {% for version in installed_php_versions %}
+                                    <option value="{{ version }}" {% if form.instance.php_version == version %}selected{% endif %}>
+                                        PHP {{ version }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">当前已安装的PHP版本: {{ installed_php_versions|join:", " }}</div>
+                        </div>
+                        
                         <div class="mb-3" id="additional-domains">
                             <label class="form-label">附加域名</label>
                             <div class="domain-list">
