@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">创建新网站</h5>
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="name" class="form-label">网站名称</label>
+                    <input type="text" class="form-control" id="name" name="name" required>
+                </div>
+                <div class="mb-3">
+                    <label for="domain" class="form-label">主域名</label>
+                    <input type="text" class="form-control" id="domain" name="domain" required>
+                </div>
+                <div class="mb-3">
+                    <label for="additional_domains" class="form-label">额外域名</label>
+                    <div id="domains-container">
+                        <div class="input-group mb-2">
+                            <input type="text" class="form-control" name="additional_domains">
+                            <button type="button" class="btn btn-success add-domain">+</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="port" class="form-label">端口</label>
+                    <input type="number" class="form-control" id="port" name="port" value="80" required>
+                </div>
+                <div class="mb-3">
+                    <label for="server_type" class="form-label">服务器类型</label>
+                    <select class="form-select" id="server_type" name="server_type" required>
+                        <option value="nginx">Nginx</option>
+                        <option value="apache">Apache</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="php_version" class="form-label">PHP版本</label>
+                    <select class="form-select" id="php_version" name="php_version">
+                        <option value="">不使用PHP</option>
+                        {% for version in php_versions %}
+                        <option value="{{ version }}">PHP {{ version }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">创建网站</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const container = document.getElementById('domains-container');
+    const addButton = container.querySelector('.add-domain');
+
+    addButton.addEventListener('click', function() {
+        const newGroup = document.createElement('div');
+        newGroup.className = 'input-group mb-2';
+        newGroup.innerHTML = `
+            <input type="text" class="form-control" name="additional_domains">
+            <button type="button" class="btn btn-danger remove-domain">-</button>
+        `;
+        container.appendChild(newGroup);
+
+        newGroup.querySelector('.remove-domain').addEventListener('click', function() {
+            newGroup.remove();
+        });
+    });
+});
+</script>
+{% endblock %}

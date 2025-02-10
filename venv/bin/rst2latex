@@ -1,4 +1,4 @@
-#!/root/newpanel/venv/bin/python
+#!/root/allenpanel/venv/bin/python
 # -*- coding: utf-8 -*-
 import re
 import sys

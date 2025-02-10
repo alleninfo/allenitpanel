@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">网站详情</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>基本信息</h6>
+                            <table class="table">
+                                <tr>
+                                    <th>网站名称</th>
+                                    <td>{{ website.name }}</td>
+                                </tr>
+                                <tr>
+                                    <th>主域名</th>
+                                    <td>{{ website.domain }}</td>
+                                </tr>
+                                <tr>
+                                    <th>额外域名</th>
+                                    <td>
+                                        {% if additional_domains %}
+                                            {% for domain in additional_domains %}
+                                                {{ domain.domain }}<br>
+                                            {% endfor %}
+                                        {% else %}
+                                            无
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>端口</th>
+                                    <td>{{ website.port }}</td>
+                                </tr>
+                                <tr>
+                                    <th>服务器类型</th>
+                                    <td>{{ website.server_type }}</td>
+                                </tr>
+                                <tr>
+                                    <th>PHP版本</th>
+                                    <td>{{ website.php_version|default:"未使用PHP" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>网站目录</th>
+                                    <td>{{ website.path }}</td>
+                                </tr>
+                                <tr>
+                                    <th>SSL状态</th>
+                                    <td>
+                                        {% if website.ssl_enabled %}
+                                            <span class="badge bg-success">已启用</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">未启用</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>网站状态</th>
+                                    <td>
+                                        {% if website.status %}
+                                            <span class="badge bg-success">运行中</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">已停止</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>SSL证书</h6>
+                            {% if ssl_certs %}
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>域名</th>
+                                            <th>到期时间</th>
+                                            <th>状态</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for cert in ssl_certs %}
+                                        <tr>
+                                            <td>{{ cert.common_name }}</td>
+                                            <td>{{ cert.valid_to|date }}</td>
+                                            <td>
+                                                {% if cert.valid_to > now %}
+                                                    <span class="badge bg-success">有效</span>
+                                                {% else %}
+                                                    <span class="badge bg-danger">已过期</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            {% else %}
+                                <p>暂无SSL证书</p>
+                            {% endif %}
+
+                            <h6 class="mt-4">备份记录</h6>
+                            {% if backups %}
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>备份时间</th>
+                                            <th>大小</th>
+                                            <th>备注</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for backup in backups %}
+                                        <tr>
+                                            <td>{{ backup.created_at|date:"Y-m-d H:i" }}</td>
+                                            <td>{{ backup.size|filesizeformat }}</td>
+                                            <td>{{ backup.note|default:"-" }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            {% else %}
+                                <p>暂无备份记录</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,4 +1,4 @@
-#!/root/newpanel/venv/bin/python
+#!/root/allenpanel/venv/bin/python
 
 import sys
 import json
