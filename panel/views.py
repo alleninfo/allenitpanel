@@ -4,8 +4,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.contrib.auth.forms import AuthenticationForm
 from .models import AuditLog, UserProfile
-from websites.models import Website
 from databases.models import Database
+from websites.models import Website
 import psutil
 from django.http import JsonResponse
 from .models import Application, ApplicationInstallation

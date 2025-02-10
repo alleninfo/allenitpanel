@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}{% if form.instance.pk %}编辑网站{% else %}添加网站{% endif %} - 控制面板{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">{% if form.instance.pk %}编辑网站{% else %}添加网站{% endif %}</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post" class="form">
+                        {% csrf_token %}
+                        {{ form|crispy }}
+                        
+                        <div class="mb-3" id="additional-domains">
+                            <label class="form-label">附加域名</label>
+                            <div class="domain-list">
+                                <!-- 动态添加的域名输入框将显示在这里 -->
+                            </div>
+                            <button type="button" class="btn btn-outline-secondary btn-sm mt-2" onclick="addDomainField()">
+                                <i class="fas fa-plus"></i> 添加域名
+                            </button>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <button type="submit" class="btn btn-primary">保存</button>
+                            <a href="{% url 'website_list' %}" class="btn btn-secondary">取消</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function addDomainField() {
+    const domainList = document.querySelector('.domain-list');
+    const domainGroup = document.createElement('div');
+    domainGroup.className = 'input-group mb-2';
+    
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'additional_domains[]';
+    input.className = 'form-control';
+    input.placeholder = '请输入域名';
+    
+    const btnGroup = document.createElement('div');
+    btnGroup.className = 'input-group-append';
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-outline-danger';
+    removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+    removeBtn.onclick = function() {
+        domainGroup.remove();
+    };
+    
+    domainGroup.appendChild(input);
+    domainGroup.appendChild(btnGroup);
+    btnGroup.appendChild(removeBtn);
+    domainList.appendChild(domainGroup);
+}
+
+// 如果是编辑模式，加载现有的附加域名
+{% if form.instance.pk %}
+{% for domain in form.instance.additional_domains.all %}
+document.addEventListener('DOMContentLoaded', function() {
+    const domainList = document.querySelector('.domain-list');
+    const domainGroup = document.createElement('div');
+    domainGroup.className = 'input-group mb-2';
+    
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'additional_domains[]';
+    input.className = 'form-control';
+    input.value = '{{ domain.domain }}';
+    
+    const btnGroup = document.createElement('div');
+    btnGroup.className = 'input-group-append';
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-outline-danger';
+    removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+    removeBtn.onclick = function() {
+        domainGroup.remove();
+    };
+    
+    domainGroup.appendChild(input);
+    domainGroup.appendChild(btnGroup);
+    btnGroup.appendChild(removeBtn);
+    domainList.appendChild(domainGroup);
+});
+{% endfor %}
+{% endif %}
+</script>
+{% endblock %}

@@ -58,22 +58,8 @@
 </div>
 
 <div class="row mt-4">
-    <!-- 网站统计 -->
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title mb-0">
-                    <i class="fas fa-globe"></i> 网站统计
-                </h5>
-            </div>
-            <div class="card-body">
-                <canvas id="websiteChart"></canvas>
-            </div>
-        </div>
-    </div>
-    
     <!-- 数据库统计 -->
-    <div class="col-md-6">
+    <div class="col-md-12">
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0">
@@ -110,10 +96,14 @@
                         <tbody>
                             {% for log in recent_logs %}
                             <tr>
-                                <td>{{ log.timestamp }}</td>
-                                <td>{{ log.user }}</td>
+                                <td>{{ log.created_at|date:"Y-m-d H:i:s" }}</td>
+                                <td>{{ log.user.username }}</td>
                                 <td>{{ log.action }}</td>
                                 <td>{{ log.ip_address }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center">暂无操作日志</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -127,30 +117,31 @@
 
 {% block extra_js %}
 <script>
-// 网站统计图表
-const websiteCtx = document.getElementById('websiteChart').getContext('2d');
-new Chart(websiteCtx, {
-    type: 'pie',
-    data: {
-        labels: ['运行中', '已停止', 'SSL启用', 'SSL未启用'],
-        datasets: [{
-            data: {{ website_stats|safe }},
-            backgroundColor: ['#28a745', '#dc3545', '#17a2b8', '#6c757d']
-        }]
-    }
-});
-
-// 数据库统计图表
-const databaseCtx = document.getElementById('databaseChart').getContext('2d');
-new Chart(databaseCtx, {
-    type: 'pie',
-    data: {
-        labels: ['MySQL', 'PostgreSQL', 'SQLite'],
-        datasets: [{
-            data: {{ database_stats|safe }},
-            backgroundColor: ['#007bff', '#fd7e14', '#20c997']
-        }]
-    }
+document.addEventListener('DOMContentLoaded', function() {
+    // 数据库统计图表
+    const databaseCtx = document.getElementById('databaseChart').getContext('2d');
+    new Chart(databaseCtx, {
+        type: 'pie',
+        data: {
+            labels: ['MySQL', 'PostgreSQL', 'SQLite'],
+            datasets: [{
+                data: {{ database_stats }},
+                backgroundColor: [
+                    '#FF6384',
+                    '#36A2EB',
+                    '#FFCE56'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'top',
+                }
+            }
+        }
+    });
 });
 </script>
-{% endblock %} 
+{% endblock %}
