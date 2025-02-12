@@ -2,31 +2,11 @@
 {% load static %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="row mb-3">
-        <div class="col">
-            <h4>Web终端</h4>
-        </div>
-        <div class="col-auto">
-            <div class="btn-group">
-                <button class="btn btn-outline-secondary" onclick="clearTerminal()">
-                    <i class="fas fa-eraser"></i> 清屏
-                </button>
-                <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-                    字体大小
-                </button>
-                <ul class="dropdown-menu" id="fontSizeMenu">
-                    <li><a class="dropdown-item" href="#" data-size="12">12px</a></li>
-                    <li><a class="dropdown-item" href="#" data-size="14">14px</a></li>
-                    <li><a class="dropdown-item" href="#" data-size="16">16px</a></li>
-                    <li><a class="dropdown-item" href="#" data-size="18">18px</a></li>
-                </ul>
-            </div>
-        </div>
-    </div>
-    <div class="row">
-        <div class="col">
-            <div id="terminal" style="height: 600px; background-color: #000;"></div>
+<div class="container-fluid h-100">
+    {% csrf_token %}
+    <div class="row h-100">
+        <div class="col p-0">
+            <div id="terminal" class="h-100"></div>
         </div>
     </div>
 </div>
@@ -35,9 +15,17 @@
 {% block extra_css %}
 <link href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" rel="stylesheet">
 <style>
+    html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+    }
     #terminal {
+        background-color: #000;
+    }
+    .terminal {
         padding: 10px;
-        border-radius: 4px;
     }
     .xterm-viewport::-webkit-scrollbar {
         width: 8px;
@@ -55,144 +43,135 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-search@0.13.0/lib/xterm-addon-search.min.js"></script>
 <script>
-    let term;
-    let command = '';
-    let commandHistory = [];
-    let historyIndex = -1;
-    let currentPath = '';
-    const username = '{{ username }}';
-    const hostname = '{{ hostname }}';
+let term;
+let terminalId;
+let fitAddon;
+let running = false;
 
-    function getPrompt() {
-        return `\r\n\x1b[32m${username}@${hostname}\x1b[0m:\x1b[34m${currentPath}\x1b[0m$ `;
-    }
-
-    function initTerminal() {
-        term = new Terminal({
-            cursorBlink: true,
-            fontSize: parseInt(localStorage.getItem('terminalFontSize') || '14'),
-            fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-            theme: {
-                background: '#000000',
-                foreground: '#ffffff',
-                cursor: '#ffffff',
-                green: '#00ff00',
-                blue: '#0088ff'
-            }
-        });
-
-        const fitAddon = new FitAddon.FitAddon();
-        term.loadAddon(fitAddon);
-        term.open(document.getElementById('terminal'));
-        fitAddon.fit();
-
-        // 获取初始工作目录
-        fetch('{% url "terminal:execute" %}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-            },
-            body: 'command=pwd'
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                currentPath = data.cwd;
-                term.write('欢迎使用Web终端\r\n');
-                term.write(getPrompt());
-            }
-        });
-
-        term.onKey(({ key, domEvent }) => {
-            const printable = !domEvent.altKey && !domEvent.ctrlKey && !domEvent.metaKey;
-
-            if (domEvent.keyCode === 13) { // Enter
-                if (command.trim()) {
-                    executeCommand(command);
-                    commandHistory.push(command);
-                    historyIndex = commandHistory.length;
-                    command = '';
-                } else {
-                    term.write(getPrompt());
-                }
-            } else if (domEvent.keyCode === 8) { // Backspace
-                if (command.length > 0) {
-                    command = command.slice(0, -1);
-                    term.write('\b \b');
-                }
-            } else if (domEvent.keyCode === 38) { // Up arrow
-                if (historyIndex > 0) {
-                    historyIndex--;
-                    command = commandHistory[historyIndex];
-                    term.write('\x1b[2K\r' + getPrompt().slice(2) + command);
-                }
-            } else if (domEvent.keyCode === 40) { // Down arrow
-                if (historyIndex < commandHistory.length - 1) {
-                    historyIndex++;
-                    command = commandHistory[historyIndex];
-                    term.write('\x1b[2K\r' + getPrompt().slice(2) + command);
-                } else {
-                    historyIndex = commandHistory.length;
-                    command = '';
-                    term.write('\x1b[2K\r' + getPrompt().slice(2));
-                }
-            } else if (printable) {
-                command += key;
-                term.write(key);
-            }
-        });
-
-        window.addEventListener('resize', () => {
-            fitAddon.fit();
-        });
-    }
-
-    function executeCommand(cmd) {
-        term.write('\r\n');
-        fetch('{% url "terminal:execute" %}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-            },
-            body: 'command=' + encodeURIComponent(cmd)
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                if (data.output) {
-                    term.write(data.output);
-                }
-                if (data.error) {
-                    term.write('\x1b[31m' + data.error + '\x1b[0m');
-                }
-                currentPath = data.cwd;
-            } else {
-                term.write('\x1b[31m错误: ' + data.error + '\x1b[0m');
-            }
-            term.write(getPrompt());
-        })
-        .catch(error => {
-            term.write('\x1b[31m错误: ' + error + '\x1b[0m');
-            term.write(getPrompt());
-        });
-    }
-
-    function clearTerminal() {
-        term.clear();
-        term.write(getPrompt());
-    }
-
-    document.getElementById('fontSizeMenu').addEventListener('click', (e) => {
-        if (e.target.dataset.size) {
-            const size = parseInt(e.target.dataset.size);
-            term.setOption('fontSize', size);
-            localStorage.setItem('terminalFontSize', size);
-        }
+async function initTerminal() {
+    // 初始化 xterm.js
+    term = new Terminal({
+        cursorBlink: true,
+        fontSize: 14,
+        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+        theme: {
+            background: '#000000',
+            foreground: '#ffffff',
+            cursor: '#ffffff',
+            cursorAccent: '#000000',
+            selection: 'rgba(255, 255, 255, 0.3)',
+            black: '#000000',
+            red: '#cc0000',
+            green: '#4e9a06',
+            yellow: '#c4a000',
+            blue: '#3465a4',
+            magenta: '#75507b',
+            cyan: '#06989a',
+            white: '#d3d7cf',
+            brightBlack: '#555753',
+            brightRed: '#ef2929',
+            brightGreen: '#8ae234',
+            brightYellow: '#fce94f',
+            brightBlue: '#729fcf',
+            brightMagenta: '#ad7fa8',
+            brightCyan: '#34e2e2',
+            brightWhite: '#eeeeec'
+        },
+        allowTransparency: true,
+        scrollback: 10000,
+        convertEol: true
     });
 
-    document.addEventListener('DOMContentLoaded', initTerminal);
+    // 加载插件
+    fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.loadAddon(new WebLinksAddon.WebLinksAddon());
+    term.loadAddon(new SearchAddon.SearchAddon());
+
+    // 打开终端
+    term.open(document.getElementById('terminal'));
+    fitAddon.fit();
+
+    // 启动新终端会话
+    const response = await fetch('{% url "terminal:start" %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    });
+    const data = await response.json();
+    
+    if (data.terminal_id) {
+        terminalId = data.terminal_id;
+        running = true;
+        readOutput();
+
+        // 处理输入
+        term.onData(data => {
+            fetch(`{% url "terminal:write" "ID" %}`.replace('ID', terminalId), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: `data=${encodeURIComponent(data)}`
+            });
+        });
+
+        // 处理终端大小变化
+        term.onResize(size => {
+            fetch(`{% url "terminal:resize" "ID" %}`.replace('ID', terminalId), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: `rows=${size.rows}&cols=${size.cols}`
+            });
+        });
+    }
+}
+
+async function readOutput() {
+    while (running && terminalId) {
+        try {
+            const response = await fetch(`{% url "terminal:read" "ID" %}`.replace('ID', terminalId));
+            const data = await response.json();
+            if (data.data) {
+                term.write(data.data);
+            }
+            await new Promise(resolve => setTimeout(resolve, 50));
+        } catch (error) {
+            console.error('读取输出错误:', error);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+    }
+}
+
+// 窗口大小变化时调整终端大小
+window.addEventListener('resize', () => {
+    if (fitAddon) {
+        fitAddon.fit();
+    }
+});
+
+// 页面关闭时清理
+window.addEventListener('beforeunload', () => {
+    running = false;
+    if (terminalId) {
+        fetch(`{% url "terminal:stop" "ID" %}`.replace('ID', terminalId), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        });
+    }
+});
+
+// 初始化
+document.addEventListener('DOMContentLoaded', initTerminal);
 </script>
-{% endblock extra_js %} 
+{% endblock extra_js %}
