@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout, authenticate
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.contrib.auth.forms import AuthenticationForm
 from .models import AuditLog, UserProfile
@@ -12,6 +12,7 @@ from .models import Application, ApplicationInstallation
 from django.utils import timezone
 import os
 import time
+import subprocess
 
 class NetworkMonitor:
     _last_bytes = None
@@ -70,7 +71,7 @@ def dashboard(request):
     
 
     
-    # 服务状态
+    # 改进服务状态检测
     def get_service_status(service_name):
         if os.name == 'nt':  # Windows
             try:
@@ -79,15 +80,65 @@ def dashboard(request):
             except:
                 return 'stopped'
         else:  # Linux
-            try:
-                output = subprocess.check_output(['systemctl', 'is-active', service_name], 
-                                            stderr=subprocess.STDOUT)
-                return 'running' if output.decode().strip() == 'active' else 'stopped'
-            except:
-                return 'stopped'
+            service_map = {
+                'php-fpm': ['php-fpm', 'php7.4-fpm', 'php8.0-fpm', 'php8.1-fpm', 'php8.2-fpm'],  # 常见的PHP-FPM服务名
+                'nginx': ['nginx'],
+                'mysql': ['mysql', 'mysqld', 'mariadb']  # 包括MariaDB
+            }
+            
+            # 获取可能的服务名列表
+            possible_services = service_map.get(service_name, [service_name])
+            
+            for service in possible_services:
+                try:
+                    # 使用systemctl命令检查服务状态
+                    result = subprocess.run(
+                        ['systemctl', 'is-active', service],
+                        capture_output=True,
+                        text=True
+                    )
+                    if result.stdout.strip() == 'active':
+                        return 'running'
+                        
+                    # 如果systemctl不可用，尝试使用service命令
+                    result = subprocess.run(
+                        ['service', service, 'status'],
+                        capture_output=True,
+                        text=True
+                    )
+                    if 'running' in result.stdout.lower():
+                        return 'running'
+                except:
+                    continue
+                    
+                try:
+                    # 对于nginx和php-fpm，还可以通过进程名检查
+                    if service_name in ['nginx', 'php-fpm']:
+                        for proc in psutil.process_iter(['name']):
+                            if service_name in proc.info['name'].lower():
+                                return 'running'
+                except:
+                    pass
+                    
+                # 特别处理MySQL
+                if service_name == 'mysql':
+                    try:
+                        for proc in psutil.process_iter(['name']):
+                            if any(x in proc.info['name'].lower() for x in ['mysql', 'mysqld', 'mariadb']):
+                                return 'running'
+                    except:
+                        pass
+            
+            return 'stopped'
     
-    # 获取最近的操作日志
-    recent_logs = AuditLog.objects.all()[:10]
+    # 获取最近的操作日志，并确保时间是本地时间
+    recent_logs = AuditLog.objects.all().order_by('-created_at')[:10]
+    for log in recent_logs:
+        # 确保时间是aware的（包含时区信息）
+        if timezone.is_naive(log.created_at):
+            log.created_at = timezone.make_aware(log.created_at)
+        # 转换为本地时间
+        log.created_at = timezone.localtime(log.created_at)
     
     # 获取网络速度
     network_speed = NetworkMonitor.get_network_speed()
@@ -102,9 +153,9 @@ def dashboard(request):
         'php_status': get_service_status('php-fpm'),
         'nginx_status': get_service_status('nginx'),
         'mysql_status': get_service_status('mysql'),
-        'recent_logs': recent_logs,
         'network_rx': network_speed['rx'],
         'network_tx': network_speed['tx'],
+        'recent_logs': recent_logs,
     }
     return render(request, 'panel/dashboard.html', context)
 
@@ -391,3 +442,96 @@ def app_uninstall(request, app_id, installation_id):
 def get_network_stats(request):
     network_speed = NetworkMonitor.get_network_speed()
     return JsonResponse(network_speed)
+
+# 添加管理员权限检查
+def is_admin(user):
+    return user.is_superuser
+
+# 服务控制视图函数
+@login_required
+@user_passes_test(is_admin)  # 只允许管理员操作
+def service_control(request, service_name, action):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': '仅支持POST请求'}, status=405)
+    
+    # 服务名称标准化映射
+    service_map = {
+        'php': {
+            'names': ['php-fpm', 'php7.4-fpm', 'php8.0-fpm', 'php8.1-fpm', 'php8.2-fpm'],
+            'display': 'PHP-FPM'
+        },
+        'nginx': {
+            'names': ['nginx'],
+            'display': 'Nginx'
+        },
+        'mysql': {
+            'names': ['mysql', 'mysqld', 'mariadb'],
+            'display': 'MySQL'
+        }
+    }
+    
+    # 验证服务名称
+    if service_name not in service_map:
+        return JsonResponse({'success': False, 'message': '无效的服务名称'}, status=400)
+    
+    # 验证操作类型
+    valid_actions = {'restart', 'stop', 'reload'}
+    if action not in valid_actions:
+        return JsonResponse({'success': False, 'message': '无效的操作类型'}, status=400)
+    
+    def execute_service_command(service, cmd):
+        try:
+            # 首先尝试使用 systemctl
+            result = subprocess.run(
+                ['sudo', 'systemctl', cmd, service],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                return True, "操作成功"
+            
+            # 如果 systemctl 失败，尝试使用 service 命令
+            result = subprocess.run(
+                ['sudo', 'service', service, cmd],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                return True, "操作成功"
+            
+            return False, f"执行命令失败: {result.stderr}"
+        except Exception as e:
+            return False, f"执行出错: {str(e)}"
+    
+    # 获取可能的服务名称列表
+    possible_services = service_map[service_name]['names']
+    service_display_name = service_map[service_name]['display']
+    
+    # 执行操作
+    for service in possible_services:
+        success, message = execute_service_command(service, action)
+        if success:
+            # 记录审计日志
+            action_map = {
+                'restart': '重启',
+                'stop': '停止',
+                'reload': '重载'
+            }
+            try:
+                AuditLog.objects.create(
+                    user=request.user,
+                    action=f'{action_map[action]}服务 {service_display_name}',
+                    ip_address=request.META.get('REMOTE_ADDR')
+                )
+            except:
+                pass  # 如果审计日志创建失败，不影响主要功能
+                
+            return JsonResponse({
+                'success': True, 
+                'message': f'{service_display_name}服务{action_map[action]}成功'
+            })
+    
+    return JsonResponse({
+        'success': False,
+        'message': f'{service_display_name}服务操作失败，请检查服务状态'
+    }, status=500)

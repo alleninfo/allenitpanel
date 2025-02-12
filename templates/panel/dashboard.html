@@ -90,6 +90,7 @@
 </div>
 
 <div class="row mt-4">
+    <!-- PHP服务卡片 -->
     <div class="col-md-4">
         <div class="card dashboard-card">
             <div class="card-body">
@@ -114,6 +115,8 @@
             </div>
         </div>
     </div>
+
+    <!-- Nginx服务卡片 -->
     <div class="col-md-4">
         <div class="card dashboard-card">
             <div class="card-body">
@@ -138,6 +141,8 @@
             </div>
         </div>
     </div>
+
+    <!-- MySQL服务卡片 -->
     <div class="col-md-4">
         <div class="card dashboard-card">
             <div class="card-body">
@@ -187,7 +192,12 @@
                         <tbody>
                             {% for log in recent_logs %}
                             <tr class="align-middle">
-                                <td><span class="text-muted"><i class="far fa-clock me-1"></i>{{ log.created_at|date:"Y-m-d H:i:s" }}</span></td>
+                                <td>
+                                    <span class="text-muted">
+                                        <i class="far fa-clock me-1"></i>
+                                        {{ log.created_at|date:"Y-m-d H:i:s" }}
+                                    </span>
+                                </td>
                                 <td><span class="badge bg-light text-dark">{{ log.user.username }}</span></td>
                                 <td>{{ log.action }}</td>
                                 <td><code>{{ log.ip_address }}</code></td>
@@ -272,31 +282,51 @@
 document.addEventListener('DOMContentLoaded', function() {
     // 服务操作处理
     document.querySelectorAll('.service-action').forEach(button => {
-        button.addEventListener('click', function() {
+        button.addEventListener('click', async function() {
             const service = this.dataset.service;
             const action = this.dataset.action;
+            const actionText = {
+                'restart': '重启',
+                'stop': '停止',
+                'reload': '重载'
+            }[action];
             
-            // 显示确认对话框
-            if (confirm(`确定要${action === 'restart' ? '重启' : (action === 'stop' ? '停止' : '重载')} ${service} 服务吗？`)) {
-                // 发送请求到后端
-                fetch(`/api/service/${service}/${action}`, {
+            try {
+                // 显示确认对话框
+                if (!confirm(`确定要${actionText} ${service} 服务吗？`)) {
+                    return;
+                }
+                
+                // 禁用按钮，显示加载状态
+                const buttons = document.querySelectorAll(`.service-action[data-service="${service}"]`);
+                buttons.forEach(btn => btn.disabled = true);
+                this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 执行中...`;
+                
+                // 发送请求
+                const response = await fetch(`/api/service/${service}/${action}/`, {
                     method: 'POST',
                     headers: {
-                        'X-CSRFToken': getCookie('csrftoken')
+                        'X-CSRFToken': getCookie('csrftoken'),
+                        'Content-Type': 'application/json'
                     }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('操作成功！');
-                        location.reload(); // 刷新页面以更新状态
-                    } else {
-                        alert('操作失败：' + data.message);
-                    }
-                })
-                .catch(error => {
-                    alert('操作失败：' + error);
                 });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // 显示成功消息
+                    alert('操作成功！');
+                    // 刷新页面以更新状态
+                    location.reload();
+                } else {
+                    throw new Error(data.message || '操作失败');
+                }
+            } catch (error) {
+                // 显示错误消息
+                alert('操作失败：' + error.message);
+                // 恢复按钮状态
+                buttons.forEach(btn => btn.disabled = false);
+                this.innerHTML = `<i class="fas fa-${action === 'restart' ? 'sync-alt' : (action === 'stop' ? 'stop' : 'redo')}"></i> ${actionText}`;
             }
         });
     });

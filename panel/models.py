@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 # Create your models here.
 
@@ -23,17 +24,16 @@ class SystemSettings(models.Model):
         return self.key
 
 class AuditLog(models.Model):
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    user = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     action = models.CharField(max_length=255)
     ip_address = models.GenericIPAddressField()
-    timestamp = models.DateTimeField(auto_now_add=True)
-    details = models.TextField(blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
-        ordering = ['-timestamp']
+        ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.user} - {self.action} - {self.timestamp}"
+        return f"{self.user.username} - {self.action} - {self.created_at}"
 
 class Application(models.Model):
     """应用商店应用"""
