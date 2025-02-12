@@ -3,71 +3,162 @@
 {% block title %}仪表盘 - 控制面板{% endblock %}
 
 {% block content %}
-<div class="row">
+<!-- 添加页面标题 -->
+<div class="dashboard-header mb-4">
+    <h1 class="h3"><i class="fas fa-tachometer-alt"></i> 系统仪表盘</h1>
+    <p class="text-muted">实时监控系统运行状态</p>
+</div>
+
+<div class="row g-3">
     <!-- 系统状态卡片 -->
     <div class="col-md-3">
-        <div class="card">
+        <div class="card h-100 dashboard-card">
             <div class="card-body">
-                <h5 class="card-title">
-                    <i class="fas fa-microchip"></i> CPU使用率
+                <h5 class="card-title text-primary">
+                    <i class="fas fa-microchip fa-fw"></i> CPU使用率
                 </h5>
-                <h2 class="card-text">{{ cpu_percent }}%</h2>
-                <div class="progress">
-                    <div class="progress-bar" role="progressbar" style="width: {{ cpu_percent }}%"></div>
+                <h2 class="card-text mb-2 counter">{{ cpu_percent }}%</h2>
+                <p class="text-muted mb-2"><i class="fas fa-microchip me-1"></i>核心数：{{ cpu_cores }}</p>
+                <div class="progress" style="height: 10px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar" 
+                         style="width: {{ cpu_percent }}%"
+                         aria-valuenow="{{ cpu_percent }}" 
+                         aria-valuemin="0" 
+                         aria-valuemax="100"></div>
                 </div>
             </div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card">
+        <div class="card h-100 dashboard-card">
             <div class="card-body">
-                <h5 class="card-title">
-                    <i class="fas fa-memory"></i> 内存使用率
+                <h5 class="card-title text-primary">
+                    <i class="fas fa-memory fa-fw"></i> 内存使用率
                 </h5>
-                <h2 class="card-text">{{ memory_percent }}%</h2>
-                <div class="progress">
-                    <div class="progress-bar" role="progressbar" style="width: {{ memory_percent }}%"></div>
+                <h2 class="card-text mb-2 counter">{{ memory_percent }}%</h2>
+                <p class="text-muted mb-2"><i class="fas fa-hdd me-1"></i>总内存：{{ total_memory }}</p>
+                <div class="progress" style="height: 10px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar" 
+                         style="width: {{ memory_percent }}%"
+                         aria-valuenow="{{ memory_percent }}" 
+                         aria-valuemin="0" 
+                         aria-valuemax="100"></div>
                 </div>
             </div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card">
+        <div class="card h-100 dashboard-card">
             <div class="card-body">
-                <h5 class="card-title">
-                    <i class="fas fa-hdd"></i> 磁盘使用率
+                <h5 class="card-title text-primary">
+                    <i class="fas fa-hdd fa-fw"></i> 磁盘使用率
                 </h5>
-                <h2 class="card-text">{{ disk_percent }}%</h2>
-                <div class="progress">
-                    <div class="progress-bar" role="progressbar" style="width: {{ disk_percent }}%"></div>
+                <h2 class="card-text mb-2 counter">{{ disk_percent }}%</h2>
+                <p class="text-muted mb-2"><i class="fas fa-database me-1"></i>总容量：{{ total_disk }}</p>
+                <div class="progress" style="height: 10px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar" 
+                         style="width: {{ disk_percent }}%"
+                         aria-valuenow="{{ disk_percent }}" 
+                         aria-valuemin="0" 
+                         aria-valuemax="100"></div>
                 </div>
             </div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card">
+        <div class="card h-100 dashboard-card">
             <div class="card-body">
-                <h5 class="card-title">
-                    <i class="fas fa-network-wired"></i> 网络流量
+                <h5 class="card-title text-primary">
+                    <i class="fas fa-network-wired fa-fw"></i> 网络流量
                 </h5>
-                <p class="mb-1">上传：{{ network_tx }}</p>
-                <p class="mb-0">下载：{{ network_rx }}</p>
+                <div class="network-stats">
+                    <p class="mb-2">
+                        <i class="fas fa-arrow-down text-success me-1"></i>
+                        下行：<span id="network-rx">{{ network_rx }}</span>
+                    </p>
+                    <p class="mb-2">
+                        <i class="fas fa-arrow-up text-danger me-1"></i>
+                        上行：<span id="network-tx">{{ network_tx }}</span>
+                    </p>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <div class="row mt-4">
-    <!-- 数据库统计 -->
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title mb-0">
-                    <i class="fas fa-database"></i> 数据库统计
-                </h5>
-            </div>
+    <div class="col-md-4">
+        <div class="card dashboard-card">
             <div class="card-body">
-                <canvas id="databaseChart"></canvas>
+                <h5 class="card-title text-primary">
+                    <i class="fab fa-php"></i> PHP服务
+                </h5>
+                <div class="d-flex align-items-center mb-3">
+                    <div class="status-indicator me-2 {% if php_status == 'running' %}bg-success{% else %}bg-danger{% endif %}"></div>
+                    <span class="status-text">{{ php_status|title }}</span>
+                </div>
+                <div class="btn-group w-100" role="group">
+                    <button type="button" class="btn btn-outline-primary btn-sm service-action" data-service="php" data-action="restart">
+                        <i class="fas fa-sync-alt"></i> 重启
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm service-action" data-service="php" data-action="stop">
+                        <i class="fas fa-stop"></i> 停止
+                    </button>
+                    <button type="button" class="btn btn-outline-success btn-sm service-action" data-service="php" data-action="reload">
+                        <i class="fas fa-redo"></i> 重载
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card dashboard-card">
+            <div class="card-body">
+                <h5 class="card-title text-primary">
+                    <i class="fas fa-server"></i> Nginx服务
+                </h5>
+                <div class="d-flex align-items-center mb-3">
+                    <div class="status-indicator me-2 {% if nginx_status == 'running' %}bg-success{% else %}bg-danger{% endif %}"></div>
+                    <span class="status-text">{{ nginx_status|title }}</span>
+                </div>
+                <div class="btn-group w-100" role="group">
+                    <button type="button" class="btn btn-outline-primary btn-sm service-action" data-service="nginx" data-action="restart">
+                        <i class="fas fa-sync-alt"></i> 重启
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm service-action" data-service="nginx" data-action="stop">
+                        <i class="fas fa-stop"></i> 停止
+                    </button>
+                    <button type="button" class="btn btn-outline-success btn-sm service-action" data-service="nginx" data-action="reload">
+                        <i class="fas fa-redo"></i> 重载
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card dashboard-card">
+            <div class="card-body">
+                <h5 class="card-title text-primary">
+                    <i class="fas fa-database"></i> MySQL服务
+                </h5>
+                <div class="d-flex align-items-center mb-3">
+                    <div class="status-indicator me-2 {% if mysql_status == 'running' %}bg-success{% else %}bg-danger{% endif %}"></div>
+                    <span class="status-text">{{ mysql_status|title }}</span>
+                </div>
+                <div class="btn-group w-100" role="group">
+                    <button type="button" class="btn btn-outline-primary btn-sm service-action" data-service="mysql" data-action="restart">
+                        <i class="fas fa-sync-alt"></i> 重启
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm service-action" data-service="mysql" data-action="stop">
+                        <i class="fas fa-stop"></i> 停止
+                    </button>
+                    <button type="button" class="btn btn-outline-success btn-sm service-action" data-service="mysql" data-action="reload">
+                        <i class="fas fa-redo"></i> 重载
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -76,15 +167,15 @@
 <div class="row mt-4">
     <!-- 最近操作日志 -->
     <div class="col-12">
-        <div class="card">
-            <div class="card-header">
+        <div class="card dashboard-card">
+            <div class="card-header bg-transparent border-0">
                 <h5 class="card-title mb-0">
-                    <i class="fas fa-history"></i> 最近操作日志
+                    <i class="fas fa-history text-primary"></i> 最近操作日志
                 </h5>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="table">
+                    <table class="table table-hover">
                         <thead>
                             <tr>
                                 <th>时间</th>
@@ -95,15 +186,15 @@
                         </thead>
                         <tbody>
                             {% for log in recent_logs %}
-                            <tr>
-                                <td>{{ log.created_at|date:"Y-m-d H:i:s" }}</td>
-                                <td>{{ log.user.username }}</td>
+                            <tr class="align-middle">
+                                <td><span class="text-muted"><i class="far fa-clock me-1"></i>{{ log.created_at|date:"Y-m-d H:i:s" }}</span></td>
+                                <td><span class="badge bg-light text-dark">{{ log.user.username }}</span></td>
                                 <td>{{ log.action }}</td>
-                                <td>{{ log.ip_address }}</td>
+                                <td><code>{{ log.ip_address }}</code></td>
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="4" class="text-center">暂无操作日志</td>
+                                <td colspan="4" class="text-center text-muted py-4">暂无操作日志</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -115,33 +206,130 @@
 </div>
 {% endblock %}
 
+{% block extra_css %}
+<style>
+.dashboard-card {
+    transition: transform 0.2s;
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.dashboard-card:hover {
+    transform: translateY(-5px);
+}
+
+.counter {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.progress-bar {
+    background: linear-gradient(45deg, #4e73df, #224abe);
+}
+
+.table th {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+.dashboard-header {
+    border-bottom: 1px solid #eee;
+    padding-bottom: 1rem;
+}
+
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.bg-success {
+    background-color: #28a745;
+}
+
+.bg-danger {
+    background-color: #dc3545;
+}
+
+.service-action {
+    transition: all 0.2s;
+}
+
+.service-action:hover {
+    transform: translateY(-2px);
+}
+
+.btn-group {
+    gap: 5px;
+}
+</style>
+{% endblock %}
+
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // 数据库统计图表
-    const databaseCtx = document.getElementById('databaseChart').getContext('2d');
-    new Chart(databaseCtx, {
-        type: 'pie',
-        data: {
-            labels: ['MySQL', 'PostgreSQL', 'SQLite'],
-            datasets: [{
-                data: {{ database_stats }},
-                backgroundColor: [
-                    '#FF6384',
-                    '#36A2EB',
-                    '#FFCE56'
-                ]
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'top',
+    // 服务操作处理
+    document.querySelectorAll('.service-action').forEach(button => {
+        button.addEventListener('click', function() {
+            const service = this.dataset.service;
+            const action = this.dataset.action;
+            
+            // 显示确认对话框
+            if (confirm(`确定要${action === 'restart' ? '重启' : (action === 'stop' ? '停止' : '重载')} ${service} 服务吗？`)) {
+                // 发送请求到后端
+                fetch(`/api/service/${service}/${action}`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCookie('csrftoken')
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('操作成功！');
+                        location.reload(); // 刷新页面以更新状态
+                    } else {
+                        alert('操作失败：' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('操作失败：' + error);
+                });
+            }
+        });
+    });
+
+    // 获取CSRF Token的函数
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
                 }
             }
         }
-    });
+        return cookieValue;
+    }
+
+    // 添加网络监控更新功能
+    function updateNetworkStats() {
+        fetch('/api/network-stats/')  // 确保添加对应的URL配置
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('network-rx').textContent = data.rx;
+                document.getElementById('network-tx').textContent = data.tx;
+            })
+            .catch(error => console.error('Error fetching network stats:', error));
+    }
+
+    // 每秒更新一次网络状态
+    setInterval(updateNetworkStats, 1000);
 });
 </script>
 {% endblock %}

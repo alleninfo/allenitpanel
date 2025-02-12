@@ -10,4 +10,5 @@ urlpatterns = [
     path('apps/<int:app_id>/install/', views.app_install, name='app_install'),
     path('apps/installation/<int:installation_id>/status/', views.app_install_status, name='app_install_status'),
     path('apps/<int:app_id>/uninstall/<int:installation_id>/', views.app_uninstall, name='app_uninstall'),
+    path('api/network-stats/', views.get_network_stats, name='network-stats'),
 ]

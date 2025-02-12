@@ -10,43 +10,101 @@ import psutil
 from django.http import JsonResponse
 from .models import Application, ApplicationInstallation
 from django.utils import timezone
+import os
+import time
+
+class NetworkMonitor:
+    _last_bytes = None
+    _last_time = None
+
+    @classmethod
+    def get_network_speed(cls):
+        if cls._last_bytes is None:
+            # 首次运行，初始化数据
+            cls._last_bytes = psutil.net_io_counters()
+            cls._last_time = time.time()
+            return {'rx': '0 B/s', 'tx': '0 B/s'}
+
+        current_bytes = psutil.net_io_counters()
+        current_time = time.time()
+
+        # 计算时间差
+        time_delta = current_time - cls._last_time
+
+        # 计算速度（字节/秒）
+        rx_speed = (current_bytes.bytes_recv - cls._last_bytes.bytes_recv) / time_delta
+        tx_speed = (current_bytes.bytes_sent - cls._last_bytes.bytes_sent) / time_delta
+
+        # 更新历史数据
+        cls._last_bytes = current_bytes
+        cls._last_time = current_time
+
+        # 转换单位
+        def format_speed(speed):
+            units = ['B/s', 'KB/s', 'MB/s', 'GB/s']
+            unit_index = 0
+            while speed >= 1024 and unit_index < len(units) - 1:
+                speed /= 1024
+                unit_index += 1
+            return f"{speed:.1f} {units[unit_index]}"
+
+        return {
+            'rx': format_speed(rx_speed),
+            'tx': format_speed(tx_speed)
+        }
 
 @login_required
 def dashboard(request):
     # 获取系统资源使用情况
     cpu_percent = psutil.cpu_percent()
+    cpu_cores = psutil.cpu_count()  # 获取CPU核心数
+
     memory = psutil.virtual_memory()
+    memory_percent = memory.percent
+    total_memory = f"{round(memory.total / (1024.0 * 1024 * 1024), 1)}GB"  # 转换为GB并保留一位小数
+    
+    
     disk = psutil.disk_usage('/')
+    disk_percent = disk.percent
+    total_disk = f"{round(disk.total / (1024.0 * 1024 * 1024), 1)}GB"  # 转换为GB并保留一位小数
     
-    # 获取网站统计数据
-    websites = Website.objects.all()
-    website_stats = [
-        websites.filter(status=True).count(),
-        websites.filter(status=False).count(),
-        websites.filter(ssl_enabled=True).count(),
-        websites.filter(ssl_enabled=False).count(),
-    ]
+
     
-    # 获取数据库统计数据
-    databases = Database.objects.all()
-    database_stats = [
-        databases.filter(db_type='mysql').count(),
-        databases.filter(db_type='postgresql').count(),
-        databases.filter(db_type='sqlite').count(),
-    ]
+    # 服务状态
+    def get_service_status(service_name):
+        if os.name == 'nt':  # Windows
+            try:
+                service = psutil.win_service_get(service_name)
+                return 'running' if service.status() == 'running' else 'stopped'
+            except:
+                return 'stopped'
+        else:  # Linux
+            try:
+                output = subprocess.check_output(['systemctl', 'is-active', service_name], 
+                                            stderr=subprocess.STDOUT)
+                return 'running' if output.decode().strip() == 'active' else 'stopped'
+            except:
+                return 'stopped'
     
     # 获取最近的操作日志
     recent_logs = AuditLog.objects.all()[:10]
     
+    # 获取网络速度
+    network_speed = NetworkMonitor.get_network_speed()
+    
     context = {
         'cpu_percent': cpu_percent,
-        'memory_percent': memory.percent,
-        'disk_percent': disk.percent,
-        'network_rx': '0 B/s',  # 需要实时计算
-        'network_tx': '0 B/s',  # 需要实时计算
-        'website_stats': website_stats,
-        'database_stats': database_stats,
+        'cpu_cores': cpu_cores,
+        'memory_percent': memory_percent,
+        'total_memory': total_memory,
+        'disk_percent': disk_percent,
+        'total_disk': total_disk,
+        'php_status': get_service_status('php-fpm'),
+        'nginx_status': get_service_status('nginx'),
+        'mysql_status': get_service_status('mysql'),
         'recent_logs': recent_logs,
+        'network_rx': network_speed['rx'],
+        'network_tx': network_speed['tx'],
     }
     return render(request, 'panel/dashboard.html', context)
 
@@ -327,3 +385,9 @@ def app_uninstall(request, app_id, installation_id):
                 os.unlink(script_path)
             except:
                 pass
+
+# 添加一个API端点用于获取实时网络速度
+@login_required
+def get_network_stats(request):
+    network_speed = NetworkMonitor.get_network_speed()
+    return JsonResponse(network_speed)
