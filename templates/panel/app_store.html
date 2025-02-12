@@ -65,70 +65,86 @@
             </div>
 
             <!-- 应用列表 -->
-            {% for category, apps in apps_by_category.items %}
-            {% if apps %}
             <div class="card mb-4">
-                <div class="card-header">
-                    <h5 class="card-title mb-0">{{ category }}</h5>
+                <!-- 添加调试信息，帮助排查问题 -->
+                {% if debug %}
+                <div class="card-header bg-light">
+                    <small class="text-muted">Debug信息:</small>
+                    <pre>{{ apps_by_category|pprint }}</pre>
                 </div>
-                <div class="card-body">
-                    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-                        {% for app in apps %}
-                        <div class="col">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <div class="d-flex align-items-center mb-3">
-                                        {% if app.icon %}
-                                        <img src="{{ app.icon.url }}" alt="{{ app.name }}" class="me-3" style="width: 48px; height: 48px;">
-                                        {% else %}
-                                        <div class="me-3">
-                                            <i class="fas fa-cube fa-2x text-primary"></i>
-                                        </div>
-                                        {% endif %}
-                                        <div>
-                                            <h5 class="card-title mb-0">{{ app.name }}</h5>
-                                            {% if app.installation_status %}
-                                            <span class="badge bg-success">已安装</span>
+                {% endif %}
+                
+                {% for category, apps in apps_by_category.items %}
+                {% if apps %}
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">{{ category }}</h5>
+                    </div>
+                    <!-- 添加空应用提示 -->
+                    {% if not apps %}
+                    <div class="card-body">
+                        <p class="text-muted">该分类下暂无应用</p>
+                    </div>
+                    {% endif %}
+                    <div class="card-body">
+                        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+                            {% for app in apps %}
+                            <div class="col">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <div class="d-flex align-items-center mb-3">
+                                            {% if app.icon %}
+                                            <img src="{{ app.icon.url }}" alt="{{ app.name }}" class="me-3" style="width: 48px; height: 48px;">
+                                            {% else %}
+                                            <div class="me-3">
+                                                <i class="fas fa-cube fa-2x text-primary"></i>
+                                            </div>
                                             {% endif %}
+                                            <div>
+                                                <h5 class="card-title mb-0">{{ app.name }}</h5>
+                                                {% if app.installation_status %}
+                                                <span class="badge bg-success">已安装</span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        <p class="card-text">{{ app.description }}</p>
+                                        
+                                        <!-- 版本选择 -->
+                                        <div class="mb-3">
+                                            <label class="form-label">选择版本</label>
+                                            <select class="form-select version-select" data-app-name="{{ app.name }}">
+                                                <option value="">请选择版本...</option>
+                                                {% for version in app.versions %}
+                                                <option value="{{ version.id }}">
+                                                    {{ version.version }} ({{ version.os_display }})
+                                                </option>
+                                                {% endfor %}
+                                            </select>
                                         </div>
                                     </div>
-                                    <p class="card-text">{{ app.description }}</p>
-                                    
-                                    <!-- 版本选择 -->
-                                    <div class="mb-3">
-                                        <label class="form-label">选择版本</label>
-                                        <select class="form-select version-select" data-app-name="{{ app.name }}">
-                                            <option value="">请选择版本...</option>
-                                            {% for version in app.versions %}
-                                            <option value="{{ version.id }}">
-                                                {{ version.version }} ({{ version.os_display }})
-                                            </option>
-                                            {% endfor %}
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="card-footer bg-transparent">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        {% if app.homepage %}
-                                        <a href="{{ app.homepage }}" target="_blank" class="btn btn-sm btn-outline-secondary">
-                                            <i class="fas fa-external-link-alt"></i> 官网
-                                        </a>
-                                        {% endif %}
-                                        <button class="btn btn-sm btn-primary install-btn" 
-                                                data-app-name="{{ app.name }}" 
-                                                disabled>
-                                            <i class="fas fa-download"></i> 安装
-                                        </button>
+                                    <div class="card-footer bg-transparent">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            {% if app.homepage %}
+                                            <a href="{{ app.homepage }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                                <i class="fas fa-external-link-alt"></i> 官网
+                                            </a>
+                                            {% endif %}
+                                            <button class="btn btn-sm btn-primary install-btn" 
+                                                    data-app-name="{{ app.name }}" 
+                                                    disabled>
+                                                <i class="fas fa-download"></i> 安装
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
+                            {% endfor %}
                         </div>
-                        {% endfor %}
                     </div>
                 </div>
+                {% endif %}
+                {% endfor %}
             </div>
-            {% endif %}
-            {% endfor %}
         </div>
 
         <!-- 已安装应用标签页 -->
