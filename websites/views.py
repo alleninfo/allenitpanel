@@ -91,11 +91,10 @@ def setup_php_fpm(version, domain):
         if not os.path.exists(backup_file):
             shutil.copy2(fpm_config_file, backup_file)
     
-    # 修改 PHP-FPM 配置，使用 TCP 端口监听
+    # 修改 PHP-FPM 配置
     fpm_config = f"""[www]
 user = www
 group = www
-listen = 127.0.0.1:{port}
 listen.owner = www
 listen.group = www
 listen.mode = 0660
@@ -186,12 +185,12 @@ def website_create(request):
     error_log  /www/wwwlogs/{website.domain}.error.log;
 
     # PHP 配置
-    location ~ \.php$ {
+    location ~ \.php$ {{
         fastcgi_pass   unix:/run/php-fpm/www.sock;
         fastcgi_index  index.php;
         fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
         include        fastcgi_params;
-    }
+    }}
 
     location / {{
         try_files $uri $uri/ /index.php?$query_string;
