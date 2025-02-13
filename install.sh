@@ -118,14 +118,14 @@ EOF
 # 创建虚拟环境并安装依赖
 setup_virtualenv() {
     echo -e "${GREEN}正在设置Python虚拟环境...${NC}"
+    cd ${PROJECT_PATH}
     python3 -m venv ${VENV_PATH}
     source ${VENV_PATH}/bin/activate
     pip install --upgrade pip
     wget https://gitee.com/allenit/allenpanel/repository/archive/master.zip
-    unzip master.zip -C ${PROJECT_PATH}
-    mv allenpanel-master/* ${PROJECT_PATH}
+    unzip master.zip
+    mv allenpanel-master/* .
     rm -rf allenpanel-master
-    cd ${PROJECT_PATH}
     cat > /root/.pip/pip.conf << EOF
 [global]
 index-url = https://pypi.tuna.tsinghua.edu.cn/simple
