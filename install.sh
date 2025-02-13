@@ -124,6 +124,7 @@ EOF
     rm -rf "$TEMP_DIR"
 
     echo -e "${GREEN}安装完成！${NC}"
+    echo -e "${GREEN}http:ip:8888,admin,admin${NC}"
 }
 
 # 卸载面板
