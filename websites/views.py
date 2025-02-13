@@ -77,58 +77,59 @@ def setup_nginx_and_www_user():
         print(f"设置 Nginx 和 www 用户时出错: {str(e)}")
         return False
 
-def setup_php_fpm(version, domain):
-    """设置 PHP-FPM 配置"""
-    version_num = version.replace('.', '')
-    port = f'90{version_num}'  # 例如：9074, 9080
+# def setup_php_fpm(version, domain):
+#     """设置 PHP-FPM 配置"""
+#     version_num = version.replace('.', '')
+#     port = f'90{version_num}'  # 例如：9074, 9080
     
-    # 修改 PHP-FPM 配置文件路径
-    fpm_config_dir = f'/etc/php/php-fpm.d'
-    fpm_config_file = os.path.join(fpm_config_dir, 'www.conf')
+#     # 修改 PHP-FPM 配置文件路径
+#     fpm_config_dir = f'/etc/php/php-fpm.d'
+#     fpm_config_file = os.path.join(fpm_config_dir, 'www.conf')
     
-    if os.path.exists(fpm_config_file):
-        backup_file = f'{fpm_config_file}.backup'
-        if not os.path.exists(backup_file):
-            shutil.copy2(fpm_config_file, backup_file)
+#     if os.path.exists(fpm_config_file):
+#         backup_file = f'{fpm_config_file}.backup'
+#         if not os.path.exists(backup_file):
+#             shutil.copy2(fpm_config_file, backup_file)
     
-    # 修改 PHP-FPM 配置
-    fpm_config = f"""[www]
-user = www
-group = www
-listen.owner = www
-listen.group = www
-listen.mode = 0660
-listen.allowed_clients = 127.0.0.1
+#     # 修改 PHP-FPM 配置，使用 TCP 端口监听
+#     fpm_config = f"""[www]
+# user = www
+# group = www
+# listen = 127.0.0.1:{port}
+# listen.owner = www
+# listen.group = www
+# listen.mode = 0660
+# listen.allowed_clients = 127.0.0.1
 
-pm = dynamic
-pm.max_children = 50
-pm.start_servers = 5
-pm.min_spare_servers = 5
-pm.max_spare_servers = 35
-pm.max_requests = 1000
+# pm = dynamic
+# pm.max_children = 50
+# pm.start_servers = 5
+# pm.min_spare_servers = 5
+# pm.max_spare_servers = 35
+# pm.max_requests = 1000
 
-php_admin_value[error_log] = /www/wwwlogs/php{version_num}_error.log
-php_admin_flag[log_errors] = on
-php_admin_value[upload_max_filesize] = 32M
+# php_admin_value[error_log] = /www/wwwlogs/php{version_num}_error.log
+# php_admin_flag[log_errors] = on
+# php_admin_value[upload_max_filesize] = 32M
 
-; 添加打开目录的权限
-security.limit_extensions = .php .php3 .php4 .php5 .php7 .php8
-php_admin_value[open_basedir] = /www/wwwroot/{domain}/:/tmp/:/proc/
-"""
+# ; 添加打开目录的权限
+# security.limit_extensions = .php .php3 .php4 .php5 .php7 .php8
+# php_admin_value[open_basedir] = /www/wwwroot/{domain}/:/tmp/:/proc/
+# """
     
-    os.makedirs(fpm_config_dir, exist_ok=True)
+#     os.makedirs(fpm_config_dir, exist_ok=True)
     
-    with open(fpm_config_file, 'w') as f:
-        f.write(fpm_config)
+#     with open(fpm_config_file, 'w') as f:
+#         f.write(fpm_config)
     
-    # 确保 PHP-FPM 目录权限正确
-    os.system(f'chown -R www:www {fpm_config_dir}')
-    os.system(f'chmod -R 755 {fpm_config_dir}')
+#     # 确保 PHP-FPM 目录权限正确
+#     os.system(f'chown -R www:www {fpm_config_dir}')
+#     os.system(f'chmod -R 755 {fpm_config_dir}')
     
-    # 重启 PHP-FPM 服务
-    os.system(f'systemctl restart php{version_num}-fpm')
+#     # 重启 PHP-FPM 服务
+#     os.system(f'systemctl restart php{version_num}-fpm')
     
-    return port
+#     return port
 
 @login_required
 def website_list(request):
@@ -171,9 +172,6 @@ def website_create(request):
                 os.system(f'chmod -R 755 {path}')
                 os.system(f'find {path} -type d -exec chmod 755 {{}} \\;')
                 os.system(f'find {path} -type f -exec chmod 644 {{}} \\;')
-                
-                # 传入 domain 参数
-                php_port = setup_php_fpm(website.php_version, website.domain)
                 
                 nginx_config = f"""server {{
     listen {website.port};
