@@ -31,7 +31,7 @@ check_root() {
         exit 1
     fi
 }
-
+mkdir -p ${PROJECT_PATH}
 # 安装依赖
 install_dependencies() {
     echo -e "${GREEN}正在安装系统依赖...${NC}"
@@ -44,15 +44,14 @@ install_dependencies() {
             yum install -y epel-release
             
             # 安装Python3和其他依赖
-            yum install -y python3 python3-pip nginx redis git,tar,wget,curl
+            yum install -y python3 python3-pip nginx redis git tar wget curl unzip
             
             # 安装supervisor
             pip3 install supervisor
             
             # 创建supervisor配置目录
             mkdir -p /etc/supervisor/conf.d
-            wget https://gitee.com/allenit/allenpanel/repository/archive/master.zip
-            unzip master.zip -C ${PROJECT_PATH}
+            
             # 创建supervisor配置文件
             if [ ! -f /etc/supervisord.conf ]; then
                 echo -e "${GREEN}正在创建supervisor配置文件...${NC}"
@@ -87,7 +86,12 @@ EOF
             systemctl enable --now nginx
             systemctl enable --now redis
             
-
+            # 配置防火墙
+            if command -v firewall-cmd >/dev/null 2>&1; then
+                firewall-cmd --permanent --add-service=http
+                firewall-cmd --permanent --add-service=https
+                firewall-cmd --reload
+            fi
             
             # 关闭SELinux
             if [ -f /etc/selinux/config ]; then
@@ -117,6 +121,18 @@ setup_virtualenv() {
     python3 -m venv ${VENV_PATH}
     source ${VENV_PATH}/bin/activate
     pip install --upgrade pip
+    wget https://gitee.com/allenit/allenpanel/repository/archive/master.zip
+    unzip master.zip -C ${PROJECT_PATH}
+    mv allenpanel-master/* ${PROJECT_PATH}
+    rm -rf allenpanel-master
+    cd ${PROJECT_PATH}
+    cat > /root/.pip/pip.conf << EOF
+[global]
+index-url = https://pypi.tuna.tsinghua.edu.cn/simple
+[install]
+trusted-host=pypi.tuna.tsinghua.edu.cn
+EOF
+
     pip install -r ${PROJECT_PATH}/requirements.txt
 }
 
@@ -241,6 +257,11 @@ uninstall() {
 reset_admin_password() {
     check_root
     
+    if [ ! -d "$PROJECT_PATH" ]; then
+        echo -e "${RED}错误: 系统未安装，请先安装系统${NC}"
+        return 1
+    fi
+    
     echo -e "${YELLOW}请输入新的管理员密码: ${NC}"
     read -s password
     echo
@@ -256,30 +277,149 @@ EOF
     echo -e "${GREEN}管理员密码已重置！${NC}"
 }
 
+# 显示系统信息
+show_system_info() {
+    SYSTEM_TYPE=$(get_system_type)
+    echo -e "${GREEN}系统信息：${NC}"
+    echo "操作系统类型: $SYSTEM_TYPE"
+    
+    if [ -d "$PROJECT_PATH" ]; then
+        echo "安装状态: 已安装"
+        echo "安装路径: $PROJECT_PATH"
+        
+        if systemctl is-active --quiet nginx; then
+            echo "Nginx状态: 运行中"
+        else
+            echo "Nginx状态: 未运行"
+        fi
+        
+        if [ "$SYSTEM_TYPE" = "centos" ]; then
+            if systemctl is-active --quiet supervisord; then
+                echo "Supervisor状态: 运行中"
+            else
+                echo "Supervisor状态: 未运行"
+            fi
+        else
+            if systemctl is-active --quiet supervisor; then
+                echo "Supervisor状态: 运行中"
+            else
+                echo "Supervisor状态: 未运行"
+            fi
+        fi
+    else
+        echo "安装状态: 未安装"
+    fi
+}
+
+# 显示菜单
+show_menu() {
+    clear
+    echo -e "${GREEN}=============================${NC}"
+    echo -e "${GREEN}      面板管理系统部署脚本    ${NC}"
+    echo -e "${GREEN}=============================${NC}"
+    echo
+    show_system_info
+    echo
+    echo -e "${GREEN}1.${NC} 安装系统"
+    echo -e "${GREEN}2.${NC} 卸载系统"
+    echo -e "${GREEN}3.${NC} 重置管理员密码"
+    echo -e "${GREEN}4.${NC} 帮助信息"
+    echo -e "${GREEN}0.${NC} 退出"
+    echo
+    echo -e "${YELLOW}请输入选项 [0-4]: ${NC}"
+}
+
 # 显示帮助信息
 show_help() {
-    echo -e "${GREEN}使用方法:${NC}"
-    echo "  $0 [选项]"
+    clear
+    echo -e "${GREEN}系统说明：${NC}"
+    echo "1. 本脚本支持 CentOS 和 Ubuntu/Debian 系统"
+    echo "2. 安装过程会自动配置必要的环境和依赖"
+    echo "3. 安装完成后可通过 http://服务器IP 访问系统"
+    echo "4. 如遇问题请查看相关日志文件"
     echo
-    echo -e "${GREEN}可用选项:${NC}"
-    echo "  install         安装系统"
-    echo "  uninstall       卸载系统"
-    echo "  reset-password  重置管理员密码"
-    echo "  help           显示此帮助信息"
+    echo -e "${GREEN}文件位置：${NC}"
+    echo "- 项目目录: ${PROJECT_PATH}"
+    echo "- Supervisor配置: ${SUPERVISOR_CONF}"
+    echo "- Nginx配置: ${NGINX_CONF}"
+    echo "- 错误日志: /var/log/${PROJECT_NAME}_err.log"
+    echo "- 输出日志: /var/log/${PROJECT_NAME}_out.log"
+    echo
+    echo -e "${GREEN}常见问题：${NC}"
+    echo "1. 如果访问出现502错误，请检查supervisor日志"
+    echo "2. 如果静态文件无法访问，请检查nginx配置和权限"
+    echo "3. 如果数据库报错，请检查数据库配置和迁移状态"
+    echo
+    echo -e "${GREEN}系统要求：${NC}"
+    echo "- Python 3.6+"
+    echo "- 2GB+ RAM"
+    echo "- 10GB+ 磁盘空间"
 }
 
 # 主程序
-case "$1" in
-    install)
-        install
-        ;;
-    uninstall)
-        uninstall
-        ;;
-    reset-password)
-        reset_admin_password
-        ;;
-    help|*)
-        show_help
-        ;;
-esac
+main() {
+    while true; do
+        show_menu
+        read -r choice
+        
+        case $choice in
+            1)
+                clear
+                echo -e "${YELLOW}准备安装系统...${NC}"
+                echo -e "${YELLOW}请确认是否继续？(y/n): ${NC}"
+                read -r confirm
+                if [[ $confirm == [Yy] ]]; then
+                    install
+                fi
+                echo -e "${GREEN}按回车键返回主菜单${NC}"
+                read -r
+                ;;
+                
+            2)
+                clear
+                echo -e "${RED}警告: 卸载将删除所有相关文件和数据！${NC}"
+                echo -e "${YELLOW}请确认是否继续？(y/n): ${NC}"
+                read -r confirm
+                if [[ $confirm == [Yy] ]]; then
+                    uninstall
+                fi
+                echo -e "${GREEN}按回车键返回主菜单${NC}"
+                read -r
+                ;;
+                
+            3)
+                clear
+                echo -e "${YELLOW}准备重置管理员密码...${NC}"
+                reset_admin_password
+                echo -e "${GREEN}按回车键返回主菜单${NC}"
+                read -r
+                ;;
+                
+            4)
+                show_help
+                echo -e "${GREEN}按回车键返回主菜单${NC}"
+                read -r
+                ;;
+                
+            0)
+                clear
+                echo -e "${GREEN}感谢使用！再见！${NC}"
+                exit 0
+                ;;
+                
+            *)
+                echo -e "${RED}无效的选项，请重新选择${NC}"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+# 检查是否为root用户
+if [ "$(id -u)" != "0" ]; then
+    echo -e "${RED}错误: 此脚本需要root权限运行${NC}"
+    exit 1
+fi
+
+# 运行主程序
+main
