@@ -32,28 +32,26 @@ install_dependencies() {
     case $OS in
         "ubuntu"|"debian")
             sudo apt-get update
-            sudo apt-get install -y wget vim unzip tar git nginx python3-venv python3-pip
+            # 添加 Caddy 官方源
+            sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
+            curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+            curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+            sudo apt-get update
+            sudo apt-get install -y wget vim unzip tar git python3-venv python3-pip caddy
             ;;
         "centos")
-            if [ "$VERSION_ID" = "8" ]; then
-                # 配置 CentOS 8 vault源
-                sudo mv /etc/yum.repos.d/CentOS-* /tmp/ 2>/dev/null
-                sudo curl -o /etc/yum.repos.d/CentOS-Base.repo https://mirrors.aliyun.com/repo/Centos-vault-8.5.2111.repo
-                sudo dnf clean all
-                sudo dnf makecache
-                sudo dnf -y install epel-release
-                sudo dnf -y install wget vim unzip tar git nginx python3-devel
-            elif [ "$VERSION_ID" = "9" ]; then
-                # 配置 CentOS Stream 9 源
-                sudo dnf -y install centos-release-stream
-                sudo dnf -y install epel-release
-                sudo dnf config-manager --set-enabled crb
-                sudo dnf clean all
-                sudo dnf makecache
-                sudo dnf -y install wget vim unzip tar git nginx python3-devel
+            if [ "$VERSION_ID" = "8" ] || [ "$VERSION_ID" = "9" ]; then
+                # 添加 Caddy 的 COPR 源
+                sudo dnf install -y 'dnf-command(copr)'
+                sudo dnf copr enable -y @caddy/caddy
+                sudo dnf -y install wget vim unzip tar git python3-devel caddy
             else
                 sudo yum -y install epel-release
-                sudo yum -y install wget vim unzip tar git nginx python3-devel
+                sudo yum -y install wget vim unzip tar git python3-devel
+                # 为 CentOS 7 安装 Caddy
+                sudo yum install -y yum-plugin-copr
+                sudo yum copr enable -y @caddy/caddy
+                sudo yum install -y caddy
             fi
             ;;
         *)
@@ -63,7 +61,7 @@ install_dependencies() {
     esac
 
     # 验证必要组件是否安装成功
-    for cmd in wget vim unzip tar git; do
+    for cmd in wget vim unzip tar git caddy; do
         if ! command -v $cmd &> /dev/null; then
             echo -e "${RED}错误：$cmd 安装失败${NC}"
             exit 1
@@ -115,8 +113,8 @@ EOF
     pip install -r requirement.txt
     pip install gunicorn
 
-    # 配置Nginx
-    setup_nginx
+    # 配置Caddy（替代原来的setup_nginx）
+    setup_caddy
 
     # 配置Gunicorn服务
     setup_gunicorn
@@ -135,19 +133,27 @@ uninstall_panel() {
     # 停止服务
     systemctl stop allenpanel
     systemctl disable allenpanel
+    systemctl stop caddy
+    systemctl disable caddy
     
     # 删除服务文件
-    rm -f /etc/systemd/system/allenpanel.service
+    case $OS in
+        "ubuntu"|"debian")
+            sudo apt-get remove -y caddy
+            ;;
+        "centos")
+            sudo dnf remove -y caddy || sudo yum remove -y caddy
+            ;;
+    esac
     
-    # 删除Nginx配置
-    rm -f /etc/nginx/conf.d/allenpanel.conf
+    rm -f /etc/systemd/system/allenpanel.service
+    rm -f /etc/caddy/Caddyfile
     
     # 删除安装目录
     rm -rf "$TARGET_DIR"
     
     # 重载服务
     systemctl daemon-reload
-    systemctl restart nginx
     
     echo -e "${GREEN}卸载完成！${NC}"
 }
@@ -164,55 +170,49 @@ change_admin_password() {
 restart_panel() {
     echo -e "${GREEN}重启面板服务...${NC}"
     systemctl restart allenpanel
-    systemctl restart nginx
+    systemctl restart caddy
     echo -e "${GREEN}服务已重启${NC}"
 }
 
-# 配置Nginx
-setup_nginx() {
-    cat > /etc/nginx/conf.d/allenpanel.conf << EOF
-server {
-    listen 80;
-    server_name _;
+# 配置Caddy（替代原来的setup_nginx函数）
+setup_caddy() {
+    # 创建 Caddy 配置文件
+    cat > /etc/caddy/Caddyfile << EOF
+:8888 {
+    root * /opt/allenpanel/static
+    file_server
 
-    access_log /var/log/nginx/allenpanel_access.log;
-    error_log /var/log/nginx/allenpanel_error.log;
-
-    client_max_body_size 100M;
-    
-    location /static/ {
-        alias /opt/allenpanel/static/;
-        expires 30d;
-        access_log off;
+    handle /static/* {
+        root * /opt/allenpanel
+        file_server
     }
 
-    location /media/ {
-        alias /opt/allenpanel/media/;
-        expires 30d;
-        access_log off;
+    handle /media/* {
+        root * /opt/allenpanel
+        file_server
     }
 
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host \$http_host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        
-        proxy_connect_timeout 60s;
-        proxy_read_timeout 60s;
-        proxy_send_timeout 60s;
+    handle /* {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    log {
+        output file /var/log/caddy/access.log
     }
 }
 EOF
+
+    # 创建日志目录
+    sudo mkdir -p /var/log/caddy
+    sudo chown caddy:caddy /var/log/caddy
 
     # 创建静态文件目录
     mkdir -p "$TARGET_DIR/static" "$TARGET_DIR/media"
     python manage.py collectstatic --noinput
 
-    # 重启Nginx
-    systemctl enable nginx
-    systemctl restart nginx
+    # 启动 Caddy 服务
+    systemctl enable caddy
+    systemctl restart caddy
 }
 
 # 配置Gunicorn服务
