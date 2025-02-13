@@ -186,15 +186,12 @@ def website_create(request):
     error_log  /www/wwwlogs/{website.domain}.error.log;
 
     # PHP 配置
-    location ~ [^/]\.php(/|$) {{
-        try_files $uri =404;
-        fastcgi_pass   127.0.0.1:{php_port};
+    location ~ \.php$ {
+        fastcgi_pass   unix:/run/php-fpm/www.sock;
         fastcgi_index  index.php;
-        include        fastcgi.conf;
-        include        fastcgi_params;
         fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
-        fastcgi_param  PHP_ADMIN_VALUE  "open_basedir=/www/wwwroot/{website.domain}/:/tmp/:/proc/";
-    }}
+        include        fastcgi_params;
+    }
 
     location / {{
         try_files $uri $uri/ /index.php?$query_string;
