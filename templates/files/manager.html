@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% csrf_token %}
 
 {% block title %}文件管理 - 控制面板{% endblock %}
 
@@ -71,6 +72,9 @@
                     <button class="btn btn-success" onclick="showCreateFolderModal()">
                         <i class="fas fa-folder-plus"></i> 新建文件夹
                     </button>
+                    <button class="btn btn-info" onclick="showCreateFileModal()">
+                        <i class="fas fa-file-plus"></i> 新建文件
+                    </button>
                 </div>
             </div>
         </div>
@@ -138,7 +142,7 @@
                                 <button class="btn btn-sm btn-warning" onclick="event.stopPropagation(); showRenameModal('{{ item.path }}', '{{ item.name }}')">
                                     <i class="fas fa-edit"></i> 重命名
                                 </button>
-                                <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteItem('{{ item.path }}')">
+                                <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteFile('{{ item.path }}')">
                                     <i class="fas fa-trash"></i> 删除
                                 </button>
                             </div>
@@ -282,6 +286,31 @@
         </div>
     </div>
 </div>
+
+<!-- 新建文件模态框 -->
+<div class="modal fade" id="createFileModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">新建文件</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createFileForm">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">文件名称</label>
+                        <input type="text" class="form-control" id="fileName" placeholder="example.txt">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="createFile()">创建</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -291,6 +320,7 @@ const createFolderModal = new bootstrap.Modal(document.getElementById('createFol
 const renameModal = new bootstrap.Modal(document.getElementById('renameModal'));
 const remoteDownloadModal = new bootstrap.Modal(document.getElementById('remoteDownloadModal'));
 const compressModal = new bootstrap.Modal(document.getElementById('compressModal'));
+const createFileModal = new bootstrap.Modal(document.getElementById('createFileModal'));
 let clipboard = { files: [], action: null }; // 用于存储剪切/复制的文件
 
 function navigateTo(path) {
@@ -305,6 +335,11 @@ function showUploadModal() {
 function showCreateFolderModal() {
     document.getElementById('folderName').value = '';
     createFolderModal.show();
+}
+
+function showCreateFileModal() {
+    document.getElementById('fileName').value = '';
+    createFileModal.show();
 }
 
 function showRenameModal(path, name) {
@@ -361,6 +396,47 @@ function createFolder() {
     });
 }
 
+function createFile() {
+    const name = document.getElementById('fileName').value;
+    if (!name) {
+        alert('请输入文件名');
+        return;
+    }
+    
+    const csrfTokenElement = document.querySelector('#createFileForm input[name="csrfmiddlewaretoken"]');
+    if (!csrfTokenElement) {
+        console.error('CSRF token not found');
+        alert('系统错误：CSRF token 未找到');
+        return;
+    }
+    
+    fetch('/files/create_file/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfTokenElement.value
+        },
+        body: JSON.stringify({
+            path: '{{ current_path }}',
+            name: name
+        })
+    })
+    .then(response => response.json().then(data => ({status: response.status, data})))
+    .then(({status, data}) => {
+        console.log('Response:', status, data);
+        if (status === 200) {
+            createFileModal.hide();
+            location.reload();
+        } else {
+            throw new Error(data.message || '创建文件失败');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('创建文件失败: ' + error.message);
+    });
+}
+
 function renameItem() {
     const path = document.getElementById('renamePath').value;
     const newName = document.getElementById('newName').value;
@@ -384,24 +460,35 @@ function renameItem() {
     });
 }
 
-function deleteItem(path) {
-    event.stopPropagation();
-    if (confirm('确定要删除此项吗？此操作不可恢复！')) {
-        fetch('/files/delete/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-            },
-            body: JSON.stringify({ path: path })
-        }).then(response => {
-            if (response.ok) {
-                location.reload();
-            } else {
-                alert('删除失败');
-            }
-        });
+function deleteFile(path) {
+    if (!confirm('确定要删除这个文件/文件夹吗？')) {
+        return;
     }
+    
+    const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]').value;
+    
+    fetch('/files/delete/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({
+            path: path
+        })
+    })
+    .then(response => response.json().then(data => ({status: response.status, data})))
+    .then(({status, data}) => {
+        if (status === 200) {
+            location.reload();
+        } else {
+            throw new Error(data.message || '删除失败');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('删除失败: ' + error.message);
+    });
 }
 
 function downloadFile(path) {

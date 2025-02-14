@@ -42,9 +42,12 @@
         <div class="col">
             <div id="editor" style="height: 600px;">{{ content }}</div>
             <div class="mt-3">
-                <button class="btn btn-primary" onclick="saveFile()">保存</button>
-                <span id="saveStatus" class="ms-2 text-muted"></span>
-                <a href="{% url 'file_browse' %}?path={{ return_path }}" class="btn btn-secondary">返回</a>
+                <form id="editorForm">
+                    {% csrf_token %}
+                    <button type="button" class="btn btn-primary" onclick="saveFile()">保存</button>
+                    <span id="saveStatus" class="ms-2 text-muted"></span>
+                    <a href="{% url 'file_browse' %}?path={{ return_path }}" class="btn btn-secondary">返回</a>
+                </form>
             </div>
         </div>
     </div>
@@ -123,11 +126,13 @@
     // 保存文件
     function saveFile() {
         document.getElementById('saveStatus').textContent = '保存中...';
+        const csrfToken = document.querySelector('#editorForm [name=csrfmiddlewaretoken]').value;
+        
         fetch('{% url "file_edit_save" %}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                'X-CSRFToken': csrfToken
             },
             body: JSON.stringify({
                 path: '{{ file_path }}',

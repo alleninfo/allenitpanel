@@ -17,4 +17,5 @@ urlpatterns = [
     path('remote-download/', views.remote_download, name='remote_download'),
     path('edit/', views.file_edit, name='file_edit'),
     path('edit/save/', views.file_edit_save, name='file_edit_save'),
+    path('create_file/', views.create_file, name='file_create'),
 ] 

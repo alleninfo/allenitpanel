@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 import json
 import zipfile
 import tarfile
+from django.views.decorators.http import require_POST
 
 # Create your views here.
 
@@ -209,6 +210,45 @@ def create_folder(request):
     
     return JsonResponse({'status': 'error', 'message': '方法不允许'}, status=405)
 
+@require_POST
+def create_file(request):
+    try:
+        data = json.loads(request.body)
+        path = data.get('path', '').lstrip('/')  # 移除开头的斜杠
+        name = data.get('name', '')
+        
+        if not name:
+            return JsonResponse({'status': 'error', 'message': '文件名不能为空'}, status=400)
+        
+        # 使用 FILES_ROOT 作为根目录
+        files_root = getattr(settings, 'FILES_ROOT', '/')
+        
+        # 构建完整的文件路径
+        full_path = os.path.join(files_root, path, name)
+        print(f"Debug - Full Path: {full_path}")
+        
+        # 检查文件是否已存在
+        if os.path.exists(full_path):
+            return JsonResponse({'status': 'error', 'message': '文件已存在'}, status=400)
+            
+        # 创建空文件
+        try:
+            with open(full_path, 'w', encoding='utf-8') as f:
+                f.write('')
+            print(f"Debug - File created successfully at: {full_path}")
+            return JsonResponse({'status': 'success'})
+                
+        except PermissionError:
+            return JsonResponse({'status': 'error', 'message': '权限被拒绝，请确保有写入权限'}, status=403)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': f'创建文件时出错：{str(e)}'}, status=500)
+            
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+        
 @login_required
 def file_rename(request):
     """重命名文件或文件夹"""
@@ -242,17 +282,19 @@ def file_rename(request):
     
     return JsonResponse({'status': 'error', 'message': '方法不允许'}, status=405)
 
-@login_required
+@require_POST
 def file_delete(request):
     """删除文件或文件夹"""
-    if request.method == 'POST':
-        path = request.POST.get('path')
+    try:
+        data = json.loads(request.body)
+        path = data.get('path')
         
         if not path:
             return JsonResponse({'status': 'error', 'message': '参数错误'}, status=400)
         
         # 获取完整路径
-        full_path = os.path.join(settings.MEDIA_ROOT, path.lstrip('/'))
+        full_path = os.path.join(settings.FILES_ROOT, path.lstrip('/'))
+        print(f"Debug - Deleting path: {full_path}")
         
         try:
             if os.path.isdir(full_path):
@@ -268,12 +310,21 @@ def file_delete(request):
                 ip_address=request.META.get('REMOTE_ADDR')
             )
             
-            messages.success(request, '删除成功')
             return JsonResponse({'status': 'success'})
+            
+        except PermissionError:
+            return JsonResponse({'status': 'error', 'message': '权限被拒绝，请确保有删除权限'}, status=403)
+        except FileNotFoundError:
+            return JsonResponse({'status': 'error', 'message': '文件或目录不存在'}, status=404)
         except Exception as e:
-            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-    
-    return JsonResponse({'status': 'error', 'message': '方法不允许'}, status=405)
+            return JsonResponse({'status': 'error', 'message': f'删除失败：{str(e)}'}, status=500)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': '无效的请求数据'}, status=400)
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 @login_required
 def file_share(request):

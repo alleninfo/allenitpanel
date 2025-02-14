@@ -178,3 +178,11 @@ CHANNEL_LAYERS = {
         'BACKEND': 'channels.layers.InMemoryChannelLayer'
     }
 }
+
+
+
+# 文件管理根目录设置
+FILES_ROOT = '/'  # 或者设置为你想要的其他路径
+
+# 确保目录存在
+os.makedirs(FILES_ROOT, exist_ok=True)
