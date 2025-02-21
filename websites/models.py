@@ -12,6 +12,12 @@ class Website(models.Model):
         ('apache', 'Apache'),
     )
     
+    SSL_PROVIDERS = (
+        ('none', '不使用 SSL'),
+        ('cloudflare', 'Cloudflare'),
+        ('letsencrypt', "Let's Encrypt"),
+    )
+    
     def get_php_versions():
         """获取系统中已安装的PHP版本"""
         php_versions = [('none', '不使用')]
@@ -56,6 +62,24 @@ class Website(models.Model):
     php_version = models.CharField(max_length=10, blank=True, null=True, verbose_name='PHP版本')
     status = models.BooleanField(_('运行状态'), default=False)
     ssl_enabled = models.BooleanField(_('SSL状态'), default=False)
+    ssl_provider = models.CharField(
+        _('SSL 提供商'),
+        max_length=20,
+        choices=SSL_PROVIDERS,
+        default='none'
+    )
+    ssl_certificate_path = models.CharField(
+        _('SSL 证书路径'),
+        max_length=255,
+        blank=True,
+        null=True
+    )
+    ssl_key_path = models.CharField(
+        _('SSL 私钥路径'),
+        max_length=255,
+        blank=True,
+        null=True
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     port = models.IntegerField(default=80, verbose_name='端口')

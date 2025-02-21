@@ -12,6 +12,8 @@ from django.db import connection  # 添加这个导入
 from django.http import JsonResponse
 from panel.models import ApplicationInstallation, Application
 import re
+from django.views.decorators.http import require_POST
+from django.core.files.storage import FileSystemStorage
 
 
 
@@ -141,195 +143,245 @@ def website_create(request):
     if request.method == 'POST':
         form = WebsiteForm(request.POST)
         if form.is_valid():
-            try:
-                # 先创建网站对象
-                website = form.save(commit=False)
-                website.user = request.user
-                website.php_version = form.cleaned_data['php_version']
-                website.save()
-                
-                # 创建网站目录并设置正确的权限
-                path = os.path.join('/www/wwwroot', website.domain)
-                os.makedirs(path, exist_ok=True)
-                
-                # 创建网站默认首页
-                index_content = """<!DOCTYPE html>
+            website = form.save(commit=False)
+            website.user = request.user
+            website.php_version = form.cleaned_data['php_version']
+            
+            # 处理 SSL 配置
+            ssl_provider = form.cleaned_data['ssl_provider']
+            if ssl_provider != 'none':
+                website.ssl_enabled = True
+                if ssl_provider == 'cloudflare':
+                    # Cloudflare SSL 配置路径
+                    website.ssl_certificate_path = f'/etc/nginx/ssl/{website.domain}/cloudflare.crt'
+                    website.ssl_key_path = f'/etc/nginx/ssl/{website.domain}/cloudflare.key'
+                elif ssl_provider == 'letsencrypt':
+                    # Let's Encrypt SSL 配置路径
+                    website.ssl_certificate_path = f'/etc/letsencrypt/live/{website.domain}/fullchain.pem'
+                    website.ssl_key_path = f'/etc/letsencrypt/live/{website.domain}/privkey.pem'
+            
+            website.save()
+            
+            # 创建网站目录
+            path = os.path.join('/www/wwwroot', website.domain)
+            os.makedirs(path, exist_ok=True)
+            
+            # 如果启用了 SSL，创建 SSL 证书目录
+            if website.ssl_enabled and ssl_provider == 'cloudflare':
+                ssl_dir = os.path.dirname(website.ssl_certificate_path)
+                os.makedirs(ssl_dir, exist_ok=True)
+            
+            # 创建默认首页
+            index_path = os.path.join(path, 'index.html')
+            with open(index_path, 'w') as f:
+                f.write("""<!DOCTYPE html>
 <html>
 <head>
-    <title>Welcome to {}</title>
+    <title>Welcome to {0}</title>
 </head>
 <body>
-    <h1>Welcome to {}</h1>
-    <p>Site is working!</p>
+    <h1>Welcome to {1}</h1>
 </body>
-</html>""".format(website.domain, website.domain)
-                
-                with open(os.path.join(path, 'index.php'), 'w') as f:
-                    f.write(index_content)
-                
-                # 设置目录权限
-                os.system(f'chown -R www:www {path}')
-                os.system(f'chmod -R 755 {path}')
-                os.system(f'find {path} -type d -exec chmod 755 {{}} \\;')
-                os.system(f'find {path} -type f -exec chmod 644 {{}} \\;')
-                
-                nginx_config = f"""server {{
+</html>""".format(website.domain, website.domain))
+            
+            # 创建 Nginx 配置
+            nginx_config = f"""server {{
     listen {website.port};
-    server_name {website.domain};
+    listen [::]:{website.port};
+"""
+            
+            if website.ssl_enabled:
+                nginx_config += f"""    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    ssl_certificate {website.ssl_certificate_path};
+    ssl_certificate_key {website.ssl_key_path};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:50m;
+    ssl_session_tickets off;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    # 添加 HSTS 策略
+    add_header Strict-Transport-Security "max-age=31536000" always;
+"""
+            
+            nginx_config += f"""    server_name {website.domain};
     root /www/wwwroot/{website.domain};
+    
     index index.php index.html index.htm;
-
+    
     access_log  /www/wwwlogs/{website.domain}.log;
     error_log  /www/wwwlogs/{website.domain}.error.log;
-
-    # PHP 配置
-    location ~ \.php$ {{
-        fastcgi_pass   unix:/run/php-fpm/www.sock;
-        fastcgi_index  index.php;
-        fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
-        include        fastcgi_params;
-    }}
-
+    
     location / {{
         try_files $uri $uri/ /index.php?$query_string;
-        if (!-e $request_filename) {{
-            rewrite ^(.*)$ /index.php?s=$1 last;
-            break;
-        }}
     }}
+"""
 
-    # 允许访问目录
-    location ~ ^/(\.user.ini|\.htaccess|\.git|\.env|\.svn|\.project|LICENSE|README.md) {{
-        deny all;
+            if website.php_version and website.php_version != 'none':
+                nginx_config += f"""
+    location ~ \.php$ {{
+        fastcgi_pass unix:/tmp/php-cgi-{website.php_version}.sock;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
     }}
+"""
 
-    # 静态文件缓存
-    location ~ .*\.(gif|jpg|jpeg|png|bmp|swf|ico)$ {{
+            nginx_config += """
+    location ~ .*\.(gif|jpg|jpeg|png|bmp|swf)$ {
         expires      30d;
-        access_log off;
-    }}
+    }
 
-    location ~ .*\.(js|css)?$ {{
+    location ~ .*\.(js|css)?$ {
         expires      12h;
-        access_log off;
-    }}
-}}"""
-                
-                nginx_path = f'/etc/nginx/conf.d/{website.domain}.conf'
-                os.makedirs(os.path.dirname(nginx_path), exist_ok=True)
-                
-                with open(nginx_path, 'w') as f:
-                    f.write(nginx_config)
-                
-                # 创建并设置日志目录权限
-                os.makedirs('/www/wwwlogs', exist_ok=True)
-                os.system('chown -R www:www /www/wwwlogs')
-                os.system('chmod -R 755 /www/wwwlogs')
-                
-                # 测试并重启 Nginx
-                if os.system('nginx -t') == 0:
-                    os.system('systemctl reload nginx')
-                else:
-                    messages.warning(request, 'Nginx 配置测试失败，请检查配置文件')
+    }
+}"""
 
-                Website.objects.filter(id=website.id).update(
-                    path=path,
-                    nginx_config_path=nginx_path
-                )
-                
-                messages.success(request, '网站创建成功！')
-                return redirect('website_list')
-                
-            except Exception as e:
-                if website.id:
-                    website.delete()
-                messages.error(request, f'创建网站失败: {str(e)}')
-                return redirect('website_list')
+            if website.ssl_enabled:
+                # 添加 HTTP 到 HTTPS 的重定向
+                nginx_config += f"""
+
+server {{
+    listen 80;
+    listen [::]:80;
+    server_name {website.domain};
+    return 301 https://$server_name$request_uri;
+}}"""
+
+            nginx_path = f'/etc/nginx/conf.d/{website.domain}.conf'
+            with open(nginx_path, 'w') as f:
+                f.write(nginx_config)
+            
+            Website.objects.filter(id=website.id).update(
+                path=path,
+                nginx_config_path=nginx_path
+            )
+            
+            # 重启 Nginx
+            subprocess.run(['systemctl', 'reload', 'nginx'])
+            
+            messages.success(request, '网站创建成功')
+            return redirect('website_list')
     else:
         form = WebsiteForm()
-
-    # 获取已安装的 PHP 版本
-    installed_php_versions = ApplicationInstallation.objects.filter(
-        application__name__icontains='php',  # 使用 icontains 替代 ilike
-        status='success'
-    ).select_related('application').values_list(
-        'application__version', 
-        flat=True
-    ).distinct()
     
-    # 转换查询结果为列表并排序
-    installed_php_versions = list(installed_php_versions)
-    
-    # 如果数据库中没有找到已安装的版本，提供默认版本列表
-    if not installed_php_versions:
-        # 先尝试直接从 Application 表获取 PHP 版本
-        php_versions = Application.objects.filter(
-            name__icontains='php'  # 使用 icontains 替代 ilike
-        ).values_list('version', flat=True).distinct()
-        
-        installed_php_versions = list(php_versions) or ['7.4', '8.0', '8.1', '8.2']
-    
-    # 版本号排序
-    try:
-        installed_php_versions = sorted(
-            installed_php_versions,
-            key=lambda x: [int(i) for i in x.split('.')]
-        )
-    except (ValueError, AttributeError):
-        # 如果排序出错，至少确保有序显示
-        installed_php_versions = sorted(installed_php_versions)
-
     context = {
         'form': form,
-        'installed_php_versions': installed_php_versions
+        'action': '创建网站',
+        'button_text': '创建',
     }
     return render(request, 'websites/form.html', context)
 
 @login_required
 def website_edit(request, pk):
     website = get_object_or_404(Website, pk=pk)
-    
-    # 从 ApplicationInstallation 获取已安装的 PHP 版本
-    installed_php_versions = ApplicationInstallation.objects.filter(
-        application__name__startswith='PHP',
-        status='installed'
-    ).values_list('application__version', flat=True)
-    
-    # 排序版本号
-    installed_php_versions = sorted(installed_php_versions)
-    
     if request.method == 'POST':
         form = WebsiteForm(request.POST, instance=website)
         if form.is_valid():
-            website = form.save()
+            website = form.save(commit=False)
             
-            # 删除所有现有的附加域名
-            website.additional_domains.all().delete()
+            # 处理 SSL 配置
+            ssl_provider = form.cleaned_data['ssl_provider']
+            old_ssl_enabled = website.ssl_enabled
             
-            # 添加新的附加域名
-            additional_domains = request.POST.getlist('additional_domains[]')
-            for domain in additional_domains:
-                if domain.strip():  # 只处理非空域名
-                    AdditionalDomain.objects.create(
-                        website=website,
-                        domain=domain.strip()
-                    )
+            if ssl_provider != 'none':
+                website.ssl_enabled = True
+                if ssl_provider == 'cloudflare':
+                    # Cloudflare SSL 配置路径
+                    website.ssl_certificate_path = f'/etc/nginx/ssl/{website.domain}/cloudflare.crt'
+                    website.ssl_key_path = f'/etc/nginx/ssl/{website.domain}/cloudflare.key'
+                    # 创建 SSL 证书目录
+                    ssl_dir = os.path.dirname(website.ssl_certificate_path)
+                    os.makedirs(ssl_dir, exist_ok=True)
+                elif ssl_provider == 'letsencrypt':
+                    # Let's Encrypt SSL 配置路径
+                    website.ssl_certificate_path = f'/etc/letsencrypt/live/{website.domain}/fullchain.pem'
+                    website.ssl_key_path = f'/etc/letsencrypt/live/{website.domain}/privkey.pem'
+            else:
+                website.ssl_enabled = False
+                website.ssl_certificate_path = None
+                website.ssl_key_path = None
             
-            # 如果路径改变，移动网站目录
-            old_path = website.path
-            if old_path != website.path:
-                try:
-                    shutil.move(old_path, website.path)
-                except Exception as e:
-                    messages.error(request, f'移动网站目录失败: {str(e)}')
-                    return render(request, 'websites/form.html', {'form': form})
+            website.save()
             
-            # 记录审计日志
-            AuditLog.objects.create(
-                user=request.user,
-                action=f'编辑网站: {website.name}',
-                ip_address=request.META.get('REMOTE_ADDR')
-            )
+            # 如果 SSL 状态发生变化，需要更新 Nginx 配置
+            if old_ssl_enabled != website.ssl_enabled:
+                # 重新生成 Nginx 配置（这里需要复制上面的 Nginx 配置生成代码）
+                nginx_config = f"""server {{
+    listen {website.port};
+    listen [::]:{website.port};
+"""
+            
+                if website.ssl_enabled:
+                    nginx_config += f"""    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    ssl_certificate {website.ssl_certificate_path};
+    ssl_certificate_key {website.ssl_key_path};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:50m;
+    ssl_session_tickets off;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    # 添加 HSTS 策略
+    add_header Strict-Transport-Security "max-age=31536000" always;
+"""
+            
+                nginx_config += f"""    server_name {website.domain};
+    root /www/wwwroot/{website.domain};
+    
+    index index.php index.html index.htm;
+    
+    access_log  /www/wwwlogs/{website.domain}.log;
+    error_log  /www/wwwlogs/{website.domain}.error.log;
+    
+    location / {{
+        try_files $uri $uri/ /index.php?$query_string;
+    }}
+"""
+
+                if website.php_version and website.php_version != 'none':
+                    nginx_config += f"""
+    location ~ \.php$ {{
+        fastcgi_pass unix:/tmp/php-cgi-{website.php_version}.sock;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }}
+"""
+
+                nginx_config += """
+    location ~ .*\.(gif|jpg|jpeg|png|bmp|swf)$ {
+        expires      30d;
+    }
+
+    location ~ .*\.(js|css)?$ {
+        expires      12h;
+    }
+}"""
+
+                if website.ssl_enabled:
+                    # 添加 HTTP 到 HTTPS 的重定向
+                    nginx_config += f"""
+
+server {{
+    listen 80;
+    listen [::]:80;
+    server_name {website.domain};
+    return 301 https://$server_name$request_uri;
+}}"""
+
+                nginx_path = f'/etc/nginx/conf.d/{website.domain}.conf'
+                with open(nginx_path, 'w') as f:
+                    f.write(nginx_config)
+                
+                # 重启 Nginx
+                subprocess.run(['systemctl', 'reload', 'nginx'])
             
             messages.success(request, '网站更新成功')
             return redirect('website_list')
@@ -338,8 +390,9 @@ def website_edit(request, pk):
     
     context = {
         'form': form,
-        'installed_php_versions': installed_php_versions,
-        'website': website,  # 添加这行
+        'website': website,
+        'action': f'编辑网站: {website.name}',
+        'button_text': '保存',
     }
     return render(request, 'websites/form.html', context)
 
@@ -472,3 +525,237 @@ def website_form(request, pk=None):
     }
     
     return render(request, 'websites/form.html', context)
+
+@require_POST
+@login_required
+def website_ssl_renew(request, pk):
+    website = get_object_or_404(Website, pk=pk)
+    try:
+        # 使用 certbot 续期证书
+        result = subprocess.run([
+            'certbot', 'renew', 
+            '--cert-name', website.domain,
+            '--non-interactive'
+        ], capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            # 记录审计日志
+            AuditLog.objects.create(
+                user=request.user,
+                action=f'续期网站 SSL 证书: {website.name}',
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            return JsonResponse({'success': True})
+        else:
+            return JsonResponse({
+                'success': False, 
+                'error': result.stderr
+            })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+@require_POST
+@login_required
+def website_ssl_revoke(request, pk):
+    website = get_object_or_404(Website, pk=pk)
+    try:
+        # 使用 certbot 吊销证书
+        result = subprocess.run([
+            'certbot', 'revoke',
+            '--cert-path', website.ssl_certificate_path,
+            '--non-interactive'
+        ], capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            # 更新网站 SSL 状态
+            website.ssl_enabled = False
+            website.ssl_provider = 'none'
+            website.ssl_certificate_path = None
+            website.ssl_key_path = None
+            website.save()
+            
+            # 记录审计日志
+            AuditLog.objects.create(
+                user=request.user,
+                action=f'吊销网站 SSL 证书: {website.name}',
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            
+            return JsonResponse({'success': True})
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': result.stderr
+            })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+@require_POST
+@login_required
+def website_ssl_apply(request, pk):
+    website = get_object_or_404(Website, pk=pk)
+    provider = request.POST.get('provider')
+    validation = request.POST.get('validation')
+    
+    try:
+        if provider == 'letsencrypt':
+            # 处理 Let's Encrypt 证书申请
+            if validation == 'http':
+                result = subprocess.run([
+                    'certbot', 'certonly',
+                    '--webroot',
+                    '--webroot-path', website.path,
+                    '-d', website.domain,
+                    '--non-interactive',
+                    '--agree-tos',
+                    '--email', request.user.email
+                ], capture_output=True, text=True)
+            else:
+                # DNS 验证方式需要用户手动添加 DNS 记录
+                result = subprocess.run([
+                    'certbot', 'certonly',
+                    '--manual',
+                    '--preferred-challenges', 'dns',
+                    '-d', website.domain,
+                    '--non-interactive',
+                    '--agree-tos',
+                    '--email', request.user.email
+                ], capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                website.ssl_enabled = True
+                website.ssl_provider = 'letsencrypt'
+                website.ssl_certificate_path = f'/etc/letsencrypt/live/{website.domain}/fullchain.pem'
+                website.ssl_key_path = f'/etc/letsencrypt/live/{website.domain}/privkey.pem'
+                website.save()
+                return JsonResponse({'success': True})
+            else:
+                return JsonResponse({'success': False, 'error': result.stderr})
+                
+        elif provider == 'cloudflare':
+            # 处理 Cloudflare 证书上传
+            cert_file = request.FILES.get('cert_file')
+            key_file = request.FILES.get('key_file')
+            
+            if not cert_file or not key_file:
+                return JsonResponse({'success': False, 'error': '请上传证书文件和私钥文件'})
+            
+            # 保存证书文件
+            ssl_dir = f'/etc/nginx/ssl/{website.domain}'
+            os.makedirs(ssl_dir, exist_ok=True)
+            
+            fs = FileSystemStorage(location=ssl_dir)
+            cert_path = fs.save('cloudflare.crt', cert_file)
+            key_path = fs.save('cloudflare.key', key_file)
+            
+            website.ssl_enabled = True
+            website.ssl_provider = 'cloudflare'
+            website.ssl_certificate_path = os.path.join(ssl_dir, cert_path)
+            website.ssl_key_path = os.path.join(ssl_dir, key_path)
+            website.save()
+            
+            return JsonResponse({'success': True})
+            
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': '不支持的证书提供商'})
+
+@require_POST
+@login_required
+def website_ssl_upload(request, pk):
+    website = get_object_or_404(Website, pk=pk)
+    try:
+        cert_file = request.FILES.get('cert_file')
+        key_file = request.FILES.get('key_file')
+        
+        if not cert_file or not key_file:
+            return JsonResponse({'success': False, 'error': '请上传证书文件和私钥文件'})
+        
+        # 保存证书文件
+        ssl_dir = f'/etc/nginx/ssl/{website.domain}'
+        os.makedirs(ssl_dir, exist_ok=True)
+        
+        fs = FileSystemStorage(location=ssl_dir)
+        cert_path = fs.save('cloudflare.crt', cert_file)
+        key_path = fs.save('cloudflare.key', key_file)
+        
+        website.ssl_enabled = True
+        website.ssl_provider = 'cloudflare'
+        website.ssl_certificate_path = os.path.join(ssl_dir, cert_path)
+        website.ssl_key_path = os.path.join(ssl_dir, key_path)
+        website.save()
+        
+        return JsonResponse({'success': True})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+@login_required
+def website_ssl_dns_records(request, pk):
+    website = get_object_or_404(Website, pk=pk)
+    try:
+        # 使用 certbot 的 manual 模式获取 DNS 记录信息
+        result = subprocess.run([
+            'certbot', '--dry-run', 'certonly', '--manual',
+            '--preferred-challenges', 'dns',
+            '-d', website.domain,
+            '--manual-public-ip-logging-ok',
+            '--agree-tos',
+            '-m', request.user.email,
+            '--force-interactive'  # 强制显示验证信息
+        ], capture_output=True, text=True)
+        
+        # 从输出中提取 DNS 验证信息
+        output = result.stdout + result.stderr
+        txt_record = None
+        domain = None
+        
+        # 查找 DNS 验证信息
+        for line in output.split('\n'):
+            if '_acme-challenge.' in line:
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    domain = parts[0]
+                    txt_record = parts[1]
+                break
+        
+        if domain and txt_record:
+            dns_info = {
+                'domain': domain,
+                'type': 'TXT',
+                'name': '_acme-challenge',
+                'value': txt_record,
+                'instructions': f'''
+请在您的域名解析服务商添加以下 DNS 记录：
+
+记录类型：TXT
+主机记录：_acme-challenge
+记录值：{txt_record}
+
+等待 DNS 记录生效后（通常需要几分钟到几小时），再点击申请证书按钮。
+您可以使用以下命令验证 DNS 记录是否生效：
+
+dig -t txt _acme-challenge.{website.domain}
+
+或者使用在线 DNS 查询工具：
+https://toolbox.googleapps.com/apps/dig/#TXT/_acme-challenge.{website.domain}
+'''
+            }
+            return JsonResponse({'success': True, 'records': dns_info})
+        else:
+            return JsonResponse({
+                'success': False, 
+                'error': '无法获取 DNS 验证记录，请稍后重试'
+            })
+            
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'获取 DNS 记录失败：{str(e)}'
+        })
+
