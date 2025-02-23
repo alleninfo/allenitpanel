@@ -1,0 +1,319 @@
+{% extends 'base.html' %}
+
+{% block title %}数据库管理{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 页面标题 -->
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h4>数据库管理</h4>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addDatabaseModal">
+                <i class="fas fa-plus me-2"></i>创建数据库
+            </button>
+        </div>
+    </div>
+
+    <!-- 数据库列表 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>数据库名</th>
+                                    <th>用户名</th>
+                                    <th>大小</th>
+                                    <th>字符集</th>
+                                    <th>状态</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for db in databases %}
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <i class="fas fa-database text-primary me-2"></i>
+                                            {{ db.name }}
+                                        </div>
+                                    </td>
+                                    <td>{{ db.username }}</td>
+                                    <td>{{ db.size }}</td>
+                                    <td>{{ db.charset }}</td>
+                                    <td>
+                                        <span class="badge {% if db.status %}bg-success{% else %}bg-danger{% endif %}">
+                                            {% if db.status %}正常{% else %}异常{% endif %}
+                                        </span>
+                                    </td>
+                                    <td>{{ db.created_at|date:"Y-m-d H:i" }}</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" title="管理"
+                                                onclick="manageDatabase('{{ db.id }}')">
+                                                <i class="fas fa-cog"></i>
+                                            </button>
+                                            <button class="btn btn-outline-info" title="备份"
+                                                onclick="backupDatabase('{{ db.id }}')">
+                                                <i class="fas fa-download"></i>
+                                            </button>
+                                            <button class="btn btn-outline-warning" title="修改密码"
+                                                onclick="changePassword('{{ db.id }}')">
+                                                <i class="fas fa-key"></i>
+                                            </button>
+                                            <button class="btn btn-outline-danger" title="删除"
+                                                onclick="deleteDatabase('{{ db.id }}')">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center py-4">
+                                        <div class="text-muted">
+                                            <i class="fas fa-info-circle me-2"></i>暂无数据库
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 创建数据库模态框 -->
+<div class="modal fade" id="addDatabaseModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">创建数据库</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addDatabaseForm">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">数据库名</label>
+                        <input type="text" class="form-control" name="name" required>
+                        <div class="form-text">只能包含字母、数字和下划线</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">用户名</label>
+                        <input type="text" class="form-control" name="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">密码</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" name="password" id="password" required>
+                            <button class="btn btn-outline-secondary" type="button" onclick="generatePassword()">
+                                生成
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">访问权限</label>
+                        <select class="form-select" name="access" required>
+                            <option value="localhost">本地服务器</option>
+                            <option value="remote">所有人</option>
+                            <option value="specified">指定IP</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">字符集</label>
+                        <select class="form-select" name="charset" required>
+                            <option value="utf8mb4">utf8mb4</option>
+                            <option value="utf8">utf8</option>
+                            <option value="gbk">gbk</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="submitAddDatabase()">创建</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 修改密码模态框 -->
+<div class="modal fade" id="changePasswordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">修改数据库密码</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="changePasswordForm">
+                    {% csrf_token %}
+                    <input type="hidden" name="db_id" id="changePasswordDbId">
+                    <div class="mb-3">
+                        <label class="form-label">新密码</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" name="new_password" id="newPassword" required>
+                            <button class="btn btn-outline-secondary" type="button" onclick="generatePassword('newPassword')">
+                                生成
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="submitChangePassword()">确定</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+// 生成随机密码
+function generatePassword(targetId = 'password') {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+    let password = '';
+    for (let i = 0; i < 16; i++) {
+        password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    document.getElementById(targetId).value = password;
+}
+
+// 创建数据库
+function submitAddDatabase() {
+    const form = document.getElementById('addDatabaseForm');
+    const formData = new FormData(form);
+
+    fetch('/databases/add/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('创建数据库失败，请重试');
+    });
+}
+
+// 管理数据库
+function manageDatabase(id) {
+    window.location.href = `/databases/${id}/manage/`;
+}
+
+// 备份数据库
+function backupDatabase(id) {
+    if (!confirm('确定要备份该数据库吗？')) return;
+
+    fetch(`/databases/${id}/backup/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('备份成功');
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('备份失败，请重试');
+    });
+}
+
+// 修改密码
+function changePassword(id) {
+    document.getElementById('changePasswordDbId').value = id;
+    new bootstrap.Modal(document.getElementById('changePasswordModal')).show();
+}
+
+// 提交修改密码
+function submitChangePassword() {
+    const form = document.getElementById('changePasswordForm');
+    const formData = new FormData(form);
+    const id = formData.get('db_id');
+
+    fetch(`/databases/${id}/change-password/`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('修改密码失败，请重试');
+    });
+}
+
+// 删除数据库
+function deleteDatabase(id) {
+    if (!confirm('确定要删除该数据库吗？此操作不可恢复！')) return;
+
+    fetch(`/databases/${id}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('删除数据库失败，请重试');
+    });
+}
+
+// 获取CSRF Token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}
+{% endblock %} 

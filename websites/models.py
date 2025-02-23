@@ -1,127 +1,84 @@
 from django.db import models
-from django.core.validators import RegexValidator
-from django.utils.translation import gettext_lazy as _
-import os
-import subprocess
-import re
 from django.contrib.auth.models import User
 
+# Create your models here.
+
 class Website(models.Model):
-    SERVER_TYPES = (
-        ('nginx', 'Nginx'),
-        ('apache', 'Apache'),
-    )
-    
-    SSL_PROVIDERS = (
-        ('none', '不使用 SSL'),
-        ('cloudflare', 'Cloudflare'),
-        ('letsencrypt', "Let's Encrypt"),
-    )
-    
-    def get_php_versions():
-        """获取系统中已安装的PHP版本"""
-        php_versions = [('none', '不使用')]
-        try:
-            # 运行命令获取PHP版本
-            result = subprocess.run(['php', '-v'], capture_output=True, text=True)
-            if result.returncode == 0:
-                # 使用正则表达式提取版本号
-                version_match = re.search(r'PHP (\d+\.\d+\.\d+)', result.stdout)
-                if version_match:
-                    version = version_match.group(1)
-                    major_minor = '.'.join(version.split('.')[:2])  # 只取主版本号和次版本号
-                    php_versions.append((major_minor, f'PHP {major_minor}'))
-        except Exception:
-            pass
-        
-        # 如果没有找到任何PHP版本，返回默认选项
-        if len(php_versions) == 1:
-            php_versions.extend([
-                ('7.4', 'PHP 7.4'),
-                ('8.0', 'PHP 8.0'),
-                ('8.1', 'PHP 8.1'),
-                ('8.2', 'PHP 8.2'),
-            ])
-        return php_versions
-
-    user = models.ForeignKey(
-        User, 
-        on_delete=models.CASCADE, 
-        null=True,  # 允许为空
-        default=1,  # 设置默认值为ID为1的用户
-        verbose_name='用户'
-    )
-    name = models.CharField(_('网站名称'), max_length=100)
-    domain = models.CharField(max_length=100, unique=True, verbose_name='域名')
-    server_type = models.CharField(
-        _('服务器类型'),
-        max_length=10,
-        choices=SERVER_TYPES,
-        default='nginx'
-    )
-    php_version = models.CharField(max_length=10, blank=True, null=True, verbose_name='PHP版本')
-    status = models.BooleanField(_('运行状态'), default=False)
-    ssl_enabled = models.BooleanField(_('SSL状态'), default=False)
-    ssl_provider = models.CharField(
-        _('SSL 提供商'),
-        max_length=20,
-        choices=SSL_PROVIDERS,
-        default='none'
-    )
-    ssl_certificate_path = models.CharField(
-        _('SSL 证书路径'),
-        max_length=255,
-        blank=True,
-        null=True
-    )
-    ssl_key_path = models.CharField(
-        _('SSL 私钥路径'),
-        max_length=255,
-        blank=True,
-        null=True
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    name = models.CharField(max_length=100, verbose_name='网站名称')
+    domain = models.CharField(max_length=100, verbose_name='域名')
     port = models.IntegerField(default=80, verbose_name='端口')
-    path = models.CharField(max_length=255, blank=True, null=True, verbose_name='网站路径')
-    nginx_config_path = models.CharField(max_length=255, null=True, blank=True)
-
-    @property
-    def database_name(self):
-        """获取数据库名称"""
-        return self.domain.replace('.', '_')
+    php_version = models.CharField(max_length=10, verbose_name='PHP版本')
+    path = models.CharField(max_length=255, verbose_name='网站目录')
+    ssl = models.BooleanField(default=False, verbose_name='SSL状态')
+    status = models.BooleanField(default=True, verbose_name='运行状态')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
 
     class Meta:
-        verbose_name = _('网站')
-        verbose_name_plural = _('网站')
+        verbose_name = '网站'
+        verbose_name_plural = '网站'
         ordering = ['-created_at']
 
     def __str__(self):
-        return self.domain
+        return self.name
 
-class AdditionalDomain(models.Model):
-    website = models.ForeignKey(
-        Website,
-        on_delete=models.CASCADE,
-        related_name='additional_domains',
-        verbose_name=_('网站')
-    )
-    domain = models.CharField(
-        _('域名'),
-        max_length=255,
-        validators=[
-            RegexValidator(
-                regex=r'^[a-zA-Z0-9][a-zA-Z0-9-_.]+[a-zA-Z0-9]$',
-                message='域名格式不正确'
-            )
-        ]
-    )
-    created_at = models.DateTimeField(_('创建时间'), auto_now_add=True)
+    def get_full_domain(self):
+        if self.port == 80:
+            return self.domain
+        return f"{self.domain}:{self.port}"
+
+class AppStore(models.Model):
+    APP_CATEGORIES = [
+        ('web', 'Web服务器'),
+        ('database', '数据库'),
+        ('language', '编程语言'),
+        ('cache', '缓存服务'),
+        ('tools', '系统工具'),
+    ]
+
+    name = models.CharField(max_length=100, verbose_name='应用名称')
+    category = models.CharField(max_length=20, choices=APP_CATEGORIES, verbose_name='分类')
+    description = models.TextField(verbose_name='应用描述')
+    version = models.CharField(max_length=20, verbose_name='版本')
+    icon_class = models.CharField(max_length=50, verbose_name='图标类名')
+    is_installed = models.BooleanField(default=False, verbose_name='是否已安装')
+    install_command = models.TextField(verbose_name='安装命令')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
 
     class Meta:
-        verbose_name = _('附加域名')
-        verbose_name_plural = _('附加域名')
-        ordering = ['-created_at']
+        verbose_name = '应用'
+        verbose_name_plural = '应用'
+        ordering = ['category', 'name']
 
     def __str__(self):
-        return self.domain
+        return self.name
+
+class AppInstallLog(models.Model):
+    app = models.ForeignKey(AppStore, on_delete=models.CASCADE, verbose_name='应用')
+    status = models.BooleanField(default=False, verbose_name='安装状态')
+    output = models.TextField(blank=True, verbose_name='输出信息')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='安装时间')
+
+    class Meta:
+        verbose_name = '安装日志'
+        verbose_name_plural = '安装日志'
+        ordering = ['-created_at']
+
+class ActivityLog(models.Model):
+    ACTIVITY_TYPES = (
+        ('login', '用户登录'),
+        ('logout', '用户登出'),
+        ('install', '安装应用'),
+        ('uninstall', '卸载应用'),
+        ('system', '系统操作'),
+    )
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    activity_type = models.CharField(max_length=20, choices=ACTIVITY_TYPES)
+    description = models.CharField(max_length=255)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']

@@ -1,0 +1,354 @@
+{% extends 'base.html' %}
+
+{% block title %}终端管理{% endblock %}
+
+{% block extra_css %}
+<style>
+    #terminal {
+        background-color: #1e1e1e;
+        color: #ffffff;
+        font-family: 'Courier New', Courier, monospace;
+        padding: 10px;
+        height: calc(100vh - 200px);
+        overflow-y: auto;
+        border-radius: 4px;
+    }
+
+    #terminal pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    #cmdInput {
+        background-color: #1e1e1e;
+        color: #ffffff;
+        border: none;
+        width: 100%;
+        padding: 5px;
+        font-family: 'Courier New', Courier, monospace;
+    }
+
+    #cmdInput:focus {
+        outline: none;
+    }
+
+    .command-line {
+        display: flex;
+        align-items: center;
+        margin-bottom: 5px;
+    }
+
+    .prompt {
+        color: #00ff00;
+        margin-right: 10px;
+        user-select: none;
+    }
+
+    .output {
+        color: #cccccc;
+        margin-left: 20px;
+    }
+
+    .error {
+        color: #ff6b6b;
+        margin-left: 20px;
+    }
+
+    .toolbar {
+        background-color: #2d2d2d;
+        padding: 10px;
+        border-radius: 4px 4px 0 0;
+    }
+
+    .toolbar button {
+        margin-right: 5px;
+    }
+
+    .terminal-container {
+        border: 1px solid #2d2d2d;
+        border-radius: 4px;
+        margin-bottom: 20px;
+    }
+
+    .command-history {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .history-item {
+        cursor: pointer;
+        padding: 5px 10px;
+        transition: background-color 0.2s;
+    }
+
+    .history-item:hover {
+        background-color: #f8f9fa;
+    }
+
+    .shortcut-key {
+        font-size: 0.8em;
+        color: #6c757d;
+        margin-left: 5px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-9">
+            <!-- 终端区域 -->
+            <div class="terminal-container">
+                <div class="toolbar">
+                    <button class="btn btn-sm btn-outline-light" onclick="clearTerminal()">
+                        <i class="fas fa-eraser me-1"></i>清空
+                    </button>
+                    <button class="btn btn-sm btn-outline-light" onclick="copyToClipboard()">
+                        <i class="fas fa-copy me-1"></i>复制
+                    </button>
+                    <button class="btn btn-sm btn-outline-light" onclick="downloadOutput()">
+                        <i class="fas fa-download me-1"></i>下载
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger float-end" onclick="killProcess()">
+                        <i class="fas fa-times me-1"></i>终止进程
+                    </button>
+                </div>
+                <div id="terminal">
+                    <div class="command-line">
+                        <span class="prompt">root@server:~$</span>
+                        <input type="text" id="cmdInput" autofocus autocomplete="off">
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <!-- 命令历史和快捷命令 -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">命令历史</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="command-history" id="commandHistory">
+                        <!-- 历史命令将通过JavaScript动态添加 -->
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">快捷命令</h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-secondary text-start" onclick="executeCommand('ls -la')">
+                            列出文件
+                            <span class="shortcut-key">ls -la</span>
+                        </button>
+                        <button class="btn btn-outline-secondary text-start" onclick="executeCommand('ps aux')">
+                            进程列表
+                            <span class="shortcut-key">ps aux</span>
+                        </button>
+                        <button class="btn btn-outline-secondary text-start" onclick="executeCommand('df -h')">
+                            磁盘使用
+                            <span class="shortcut-key">df -h</span>
+                        </button>
+                        <button class="btn btn-outline-secondary text-start" onclick="executeCommand('free -h')">
+                            内存使用
+                            <span class="shortcut-key">free -h</span>
+                        </button>
+                        <button class="btn btn-outline-secondary text-start" onclick="executeCommand('top -b -n 1')">
+                            系统状态
+                            <span class="shortcut-key">top</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+let commandHistory = [];
+let historyIndex = -1;
+let ws = null;
+
+// 初始化WebSocket连接
+function initWebSocket() {
+    ws = new WebSocket(`ws://${window.location.host}/ws/terminal/`);
+    
+    ws.onopen = function() {
+        appendOutput('WebSocket连接已建立', 'system');
+    };
+    
+    ws.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        appendOutput(data.output, data.type);
+    };
+    
+    ws.onclose = function() {
+        appendOutput('WebSocket连接已关闭', 'error');
+        // 尝试重新连接
+        setTimeout(initWebSocket, 3000);
+    };
+
+    ws.onerror = function(error) {
+        console.error('WebSocket错误:', error);
+        appendOutput('WebSocket错误', 'error');
+    };
+}
+
+// 初始化终端
+document.addEventListener('DOMContentLoaded', function() {
+    initWebSocket();
+
+    const cmdInput = document.getElementById('cmdInput');
+    
+    cmdInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            const command = this.value.trim();
+            if (command) {
+                executeCommand(command);
+                this.value = '';
+            }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            navigateHistory('up');
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            navigateHistory('down');
+        }
+    });
+});
+
+// 执行命令
+function executeCommand(command) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        appendOutput('WebSocket连接已断开，请刷新页面重试', 'error');
+        return;
+    }
+
+    appendOutput(command, 'command');
+    ws.send(JSON.stringify({
+        command: command
+    }));
+
+    // 添加到历史记录
+    commandHistory.unshift(command);
+    historyIndex = -1;
+    updateCommandHistory();
+}
+
+// 添加输出到终端
+function appendOutput(text, type) {
+    const terminal = document.getElementById('terminal');
+    const output = document.createElement('div');
+    
+    if (type === 'command') {
+        output.className = 'command-line';
+        output.innerHTML = `
+            <span class="prompt">root@server:~$</span>
+            <span>${text}</span>
+        `;
+    } else if (type === 'error') {
+        output.className = 'error';
+        output.textContent = text;
+    } else {
+        output.className = 'output';
+        output.textContent = text;
+    }
+
+    terminal.insertBefore(output, terminal.lastElementChild);
+    terminal.scrollTop = terminal.scrollHeight;
+}
+
+// 更新命令历史显示
+function updateCommandHistory() {
+    const historyDiv = document.getElementById('commandHistory');
+    historyDiv.innerHTML = commandHistory.map((cmd, index) => `
+        <div class="history-item" onclick="executeCommand('${cmd}')">
+            ${cmd}
+        </div>
+    `).join('');
+}
+
+// 导航命令历史
+function navigateHistory(direction) {
+    if (commandHistory.length === 0) return;
+
+    if (direction === 'up') {
+        historyIndex = Math.min(historyIndex + 1, commandHistory.length - 1);
+    } else {
+        historyIndex = Math.max(historyIndex - 1, -1);
+    }
+
+    const cmdInput = document.getElementById('cmdInput');
+    cmdInput.value = historyIndex >= 0 ? commandHistory[historyIndex] : '';
+}
+
+// 清空终端
+function clearTerminal() {
+    const terminal = document.getElementById('terminal');
+    const input = terminal.lastElementChild;
+    terminal.innerHTML = '';
+    terminal.appendChild(input);
+}
+
+// 复制终端内容
+function copyToClipboard() {
+    const terminal = document.getElementById('terminal');
+    const text = Array.from(terminal.children)
+        .map(line => line.textContent)
+        .join('\n');
+    
+    navigator.clipboard.writeText(text).then(() => {
+        alert('已复制到剪贴板');
+    }).catch(err => {
+        console.error('复制失败:', err);
+        alert('复制失败');
+    });
+}
+
+// 下载终端输出
+function downloadOutput() {
+    const terminal = document.getElementById('terminal');
+    const text = Array.from(terminal.children)
+        .map(line => line.textContent)
+        .join('\n');
+    
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `terminal_output_${new Date().toISOString()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// 终止进程
+function killProcess() {
+    if (confirm('确定要终止当前进程吗？')) {
+        executeCommand('\x03');  // 发送Ctrl+C
+    }
+}
+
+// 获取CSRF Token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}
+{% endblock %} 

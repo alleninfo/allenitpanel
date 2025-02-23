@@ -1,0 +1,317 @@
+{% extends 'base.html' %}
+
+{% block title %}防火墙管理{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 页面标题和状态 -->
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-1">防火墙管理</h4>
+                <div class="d-flex align-items-center">
+                    <span class="me-3">
+                        状态：
+                        <span class="badge {% if firewall_status %}bg-success{% else %}bg-danger{% endif %}">
+                            {% if firewall_status %}运行中{% else %}已停止{% endif %}
+                        </span>
+                    </span>
+                    <button class="btn btn-sm {% if firewall_status %}btn-danger{% else %}btn-success{% endif %}" 
+                            onclick="toggleFirewall()">
+                        {% if firewall_status %}
+                        <i class="fas fa-stop me-1"></i>停止
+                        {% else %}
+                        <i class="fas fa-play me-1"></i>启动
+                        {% endif %}
+                    </button>
+                </div>
+            </div>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addRuleModal">
+                <i class="fas fa-plus me-2"></i>添加规则
+            </button>
+        </div>
+    </div>
+
+    <!-- 防火墙规则列表 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>端口</th>
+                                    <th>协议</th>
+                                    <th>来源IP</th>
+                                    <th>描述</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for rule in firewall_rules %}
+                                <tr>
+                                    <td>{{ rule.port }}</td>
+                                    <td>{{ rule.protocol }}</td>
+                                    <td>{{ rule.source|default:"所有" }}</td>
+                                    <td>{{ rule.description }}</td>
+                                    <td>
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" 
+                                                   {% if rule.enabled %}checked{% endif %}
+                                                   onchange="toggleRule('{{ rule.id }}', this.checked)">
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" title="编辑"
+                                                    onclick="editRule('{{ rule.id }}')">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button class="btn btn-outline-danger" title="删除"
+                                                    onclick="deleteRule('{{ rule.id }}')">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="text-muted">
+                                            <i class="fas fa-info-circle me-2"></i>暂无防火墙规则
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 常用端口快速添加 -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">常用端口</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-outline-primary" onclick="quickAddPort(80, 'HTTP')">
+                            HTTP (80)
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="quickAddPort(443, 'HTTPS')">
+                            HTTPS (443)
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="quickAddPort(22, 'SSH')">
+                            SSH (22)
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="quickAddPort(21, 'FTP')">
+                            FTP (21)
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="quickAddPort(3306, 'MySQL')">
+                            MySQL (3306)
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="quickAddPort(6379, 'Redis')">
+                            Redis (6379)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 添加规则模态框 -->
+<div class="modal fade" id="addRuleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">添加防火墙规则</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addRuleForm">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">端口</label>
+                        <input type="number" class="form-control" name="port" required min="1" max="65535">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">协议</label>
+                        <select class="form-select" name="protocol" required>
+                            <option value="tcp">TCP</option>
+                            <option value="udp">UDP</option>
+                            <option value="tcp,udp">TCP/UDP</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">来源IP</label>
+                        <input type="text" class="form-control" name="source" placeholder="留空表示允许所有IP">
+                        <div class="form-text">支持IP或CIDR格式，多个IP用逗号分隔</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">描述</label>
+                        <input type="text" class="form-control" name="description" placeholder="规则描述">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="submitAddRule()">添加</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+// 切换防火墙状态
+function toggleFirewall() {
+    if (!confirm('确定要切换防火墙状态吗？')) return;
+
+    fetch('/firewall/toggle/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('操作失败，请重试');
+    });
+}
+
+// 添加规则
+function submitAddRule() {
+    const form = document.getElementById('addRuleForm');
+    const formData = new FormData(form);
+
+    fetch('/firewall/rules/add/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('添加规则失败，请重试');
+    });
+}
+
+// 快速添加端口
+function quickAddPort(port, description) {
+    const formData = new FormData();
+    formData.append('port', port);
+    formData.append('protocol', 'tcp');
+    formData.append('description', description);
+
+    fetch('/firewall/rules/add/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('添加规则失败，请重试');
+    });
+}
+
+// 切换规则状态
+function toggleRule(id, enabled) {
+    fetch(`/firewall/rules/${id}/toggle/`, {
+        method: 'POST',
+        body: JSON.stringify({ enabled: enabled }),
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            alert(data.error);
+            location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('操作失败，请重试');
+        location.reload();
+    });
+}
+
+// 删除规则
+function deleteRule(id) {
+    if (!confirm('确定要删除该规则吗？')) return;
+
+    fetch(`/firewall/rules/${id}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('删除规则失败，请重试');
+    });
+}
+
+// 获取CSRF Token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}
+{% endblock %} 

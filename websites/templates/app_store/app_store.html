@@ -1,0 +1,302 @@
+{% extends 'base.html' %}
+
+{% block title %}应用商店{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 页面标题和搜索栏 -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h4>应用商店</h4>
+            <p class="text-muted">一键安装常用应用和服务</p>
+        </div>
+        <div class="col-md-4">
+            <div class="input-group">
+                <input type="text" class="form-control" id="searchInput" placeholder="搜索应用...">
+                <button class="btn btn-outline-secondary" type="button" onclick="searchApps()">
+                    <i class="fas fa-search"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 分类标签 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="nav nav-pills" id="appCategories">
+                <button class="nav-link active" data-category="all">全部</button>
+                <button class="nav-link" data-category="web">Web服务器</button>
+                <button class="nav-link" data-category="database">数据库</button>
+                <button class="nav-link" data-category="language">编程语言</button>
+                <button class="nav-link" data-category="cache">缓存服务</button>
+                <button class="nav-link" data-category="tools">系统工具</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 应用列表 -->
+    <div class="row" id="appList">
+        <!-- Web服务器 -->
+        <div class="col-md-4 col-lg-3 mb-4" data-category="web">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="fas fa-server fa-2x text-primary me-3"></i>
+                        <div>
+                            <h5 class="card-title mb-0">Nginx</h5>
+                            <small class="text-muted">高性能Web服务器</small>
+                        </div>
+                    </div>
+                    <p class="card-text">支持高并发、负载均衡的Web服务器和反向代理服务器。</p>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="badge bg-success">已安装</span>
+                        <button class="btn btn-sm btn-outline-primary" onclick="manageApp('nginx')">
+                            管理
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MySQL -->
+        <div class="col-md-4 col-lg-3 mb-4" data-category="database">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="fas fa-database fa-2x text-info me-3"></i>
+                        <div>
+                            <h5 class="card-title mb-0">MySQL</h5>
+                            <small class="text-muted">关系型数据库</small>
+                        </div>
+                    </div>
+                    <p class="card-text">流行的开源关系型数据库管理系统。</p>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="badge bg-success">已安装</span>
+                        <button class="btn btn-sm btn-outline-primary" onclick="manageApp('mysql')">
+                            管理
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Redis -->
+        <div class="col-md-4 col-lg-3 mb-4" data-category="cache">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="fas fa-memory fa-2x text-danger me-3"></i>
+                        <div>
+                            <h5 class="card-title mb-0">Redis</h5>
+                            <small class="text-muted">内存数据库</small>
+                        </div>
+                    </div>
+                    <p class="card-text">高性能的内存数据库和缓存服务。</p>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <button class="btn btn-sm btn-primary" onclick="installApp('redis')">
+                            安装
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PHP -->
+        <div class="col-md-4 col-lg-3 mb-4" data-category="language">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="fab fa-php fa-2x text-primary me-3"></i>
+                        <div>
+                            <h5 class="card-title mb-0">PHP</h5>
+                            <small class="text-muted">服务端脚本语言</small>
+                        </div>
+                    </div>
+                    <p class="card-text">流行的服务器端脚本语言。</p>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="badge bg-success">已安装</span>
+                        <button class="btn btn-sm btn-outline-primary" onclick="manageApp('php')">
+                            管理
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 安装确认模态框 -->
+<div class="modal fade" id="installModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">安装确认</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>确定要安装 <span id="appName"></span> 吗？</p>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="agreeTerms">
+                    <label class="form-check-label" for="agreeTerms">
+                        我已阅读并同意安装协议
+                    </label>
+                </div>
+                <div class="progress" style="display: none;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmInstall">确定安装</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+// 搜索应用
+function searchApps() {
+    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    const apps = document.querySelectorAll('#appList > div');
+    
+    apps.forEach(app => {
+        const title = app.querySelector('.card-title').textContent.toLowerCase();
+        const description = app.querySelector('.card-text').textContent.toLowerCase();
+        
+        if (title.includes(searchTerm) || description.includes(searchTerm)) {
+            app.style.display = '';
+        } else {
+            app.style.display = 'none';
+        }
+    });
+}
+
+// 切换分类
+document.getElementById('appCategories').addEventListener('click', function(e) {
+    if (e.target.classList.contains('nav-link')) {
+        // 更新活动状态
+        this.querySelectorAll('.nav-link').forEach(link => {
+            link.classList.remove('active');
+        });
+        e.target.classList.add('active');
+
+        // 过滤应用
+        const category = e.target.dataset.category;
+        const apps = document.querySelectorAll('#appList > div');
+        
+        apps.forEach(app => {
+            if (category === 'all' || app.dataset.category === category) {
+                app.style.display = '';
+            } else {
+                app.style.display = 'none';
+            }
+        });
+    }
+});
+
+// 安装应用
+function installApp(appId) {
+    const modal = new bootstrap.Modal(document.getElementById('installModal'));
+    document.getElementById('appName').textContent = appId;
+    
+    const confirmBtn = document.getElementById('confirmInstall');
+    const agreeCheck = document.getElementById('agreeTerms');
+    const progress = document.querySelector('.progress');
+    const progressBar = document.querySelector('.progress-bar');
+    
+    // 重置状态
+    agreeCheck.checked = false;
+    progress.style.display = 'none';
+    progressBar.style.width = '0%';
+    
+    confirmBtn.onclick = function() {
+        if (!agreeCheck.checked) {
+            alert('请先同意安装协议');
+            return;
+        }
+
+        // 显示进度条
+        progress.style.display = 'block';
+        confirmBtn.disabled = true;
+        
+        // 发送安装请求
+        fetch(`/app-store/install/${appId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // 模拟安装进度
+                let progress = 0;
+                const interval = setInterval(() => {
+                    progress += 10;
+                    progressBar.style.width = `${progress}%`;
+                    
+                    if (progress >= 100) {
+                        clearInterval(interval);
+                        setTimeout(() => {
+                            modal.hide();
+                            location.reload();
+                        }, 500);
+                    }
+                }, 500);
+            } else {
+                alert(data.error);
+                modal.hide();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('安装失败，请重试');
+            modal.hide();
+        });
+    };
+    
+    modal.show();
+}
+
+// 管理应用
+function manageApp(appId) {
+    // 根据应用类型跳转到相应的管理页面
+    const managementUrls = {
+        'nginx': '/website_manage/',
+        'mysql': '/database_manage/',
+        'php': '/php_manage/',
+        'redis': '/redis_manage/'
+    };
+
+    if (managementUrls[appId]) {
+        window.location.href = managementUrls[appId];
+    }
+}
+
+// 获取CSRF Token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}
+{% endblock %} 

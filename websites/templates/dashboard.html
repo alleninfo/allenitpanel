@@ -1,0 +1,512 @@
+{% extends 'base.html' %}
+
+{% block title %}仪表盘{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-card {
+        transition: transform 0.2s;
+    }
+    .stats-card:hover {
+        transform: translateY(-5px);
+    }
+    .stats-icon {
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+    }
+    .chart-container {
+        height: 300px;
+    }
+    .system-info {
+        font-size: 0.9rem;
+    }
+    .progress {
+        height: 8px;
+    }
+    .quick-actions .btn {
+        text-align: left;
+        margin-bottom: 10px;
+        padding: 15px;
+    }
+    .quick-actions .btn i {
+        margin-right: 10px;
+    }
+    .usage-details {
+        margin-top: 15px;
+        padding-top: 10px;
+        border-top: 1px solid rgba(0,0,0,0.05);
+    }
+    .progress {
+        background-color: rgba(0,0,0,0.05);
+    }
+    .progress-bar {
+        transition: width 0.5s ease-in-out;
+    }
+    small.text-muted {
+        font-size: 0.75rem;
+    }
+    .card-body {
+        padding: 1.25rem;
+    }
+    .network-chart {
+        overflow: hidden;
+        border-radius: 2px;
+    }
+    .network-up-bar,
+    .network-down-bar {
+        transition: width 0.5s ease-in-out;
+    }
+    .timeline {
+        position: relative;
+        padding: 0;
+        list-style: none;
+    }
+    .timeline-item {
+        position: relative;
+        padding-left: 40px;
+        margin-bottom: 20px;
+    }
+    .timeline-marker {
+        position: absolute;
+        left: 0;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: #f8f9fa;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .timeline-content {
+        padding: 10px;
+        background: #f8f9fa;
+        border-radius: 4px;
+    }
+    .timeline-item:not(:last-child):before {
+        content: '';
+        position: absolute;
+        left: 15px;
+        top: 30px;
+        height: calc(100% - 10px);
+        width: 2px;
+        background: #e9ecef;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 欢迎信息 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h4 class="mb-3">欢迎回来，{{ request.user.username }}！</h4>
+            <p class="text-muted">系统概览和快速操作</p>
+        </div>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="row mb-4">
+        <!-- CPU卡片 -->
+        <div class="col-md-3 mb-3">
+            <div class="card stats-card">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="stats-icon bg-primary bg-opacity-10 text-primary">
+                            <i class="fas fa-server fa-lg"></i>
+                        </div>
+                        <div class="ms-3">
+                            <h6 class="mb-1">CPU使用率</h6>
+                            <h4 class="mb-0">{{ system_info.cpu.percent }}%</h4>
+                        </div>
+                    </div>
+                    <div class="usage-details">
+                        <div class="d-flex justify-content-between mb-1">
+                            <small class="text-muted">已用: {{ system_info.cpu.used_cores }} 核</small>
+                            <small class="text-muted">总计: {{ system_info.cpu.total_cores }} 核</small>
+                        </div>
+                        <div class="progress" style="height: 4px;">
+                            <div class="progress-bar bg-primary" role="progressbar" 
+                                 style="width: {{ system_info.cpu.percent }}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 内存卡片 -->
+        <div class="col-md-3 mb-3">
+            <div class="card stats-card">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="stats-icon bg-success bg-opacity-10 text-success">
+                            <i class="fas fa-memory fa-lg"></i>
+                        </div>
+                        <div class="ms-3">
+                            <h6 class="mb-1">内存使用率</h6>
+                            <h4 class="mb-0">{{ system_info.memory.percent }}%</h4>
+                        </div>
+                    </div>
+                    <div class="usage-details">
+                        <div class="d-flex justify-content-between mb-1">
+                            <small class="text-muted">已用: {{ system_info.memory.used }}MB</small>
+                            <small class="text-muted">总计: {{ system_info.memory.total }}MB</small>
+                        </div>
+                        <div class="progress" style="height: 4px;">
+                            <div class="progress-bar bg-success" role="progressbar" 
+                                 style="width: {{ system_info.memory.percent }}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 磁盘卡片 -->
+        <div class="col-md-3 mb-3">
+            <div class="card stats-card">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="stats-icon bg-warning bg-opacity-10 text-warning">
+                            <i class="fas fa-hdd fa-lg"></i>
+                        </div>
+                        <div class="ms-3">
+                            <h6 class="mb-1">磁盘使用率</h6>
+                            <h4 class="mb-0">{{ system_info.disk.percent }}%</h4>
+                        </div>
+                    </div>
+                    <div class="usage-details">
+                        <div class="d-flex justify-content-between mb-1">
+                            <small class="text-muted">已用: {{ system_info.disk.used }}GB</small>
+                            <small class="text-muted">总计: {{ system_info.disk.total }}GB</small>
+                        </div>
+                        <div class="progress" style="height: 4px;">
+                            <div class="progress-bar bg-warning" role="progressbar" 
+                                 style="width: {{ system_info.disk.percent }}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 网络卡片 -->
+        <div class="col-md-3 mb-3">
+            <div class="card stats-card">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="stats-icon bg-info bg-opacity-10 text-info">
+                            <i class="fas fa-network-wired fa-lg"></i>
+                        </div>
+                        <div class="ms-3">
+                            <h6 class="mb-1">网络流量</h6>
+                            <h4 class="mb-0">↓ {{ system_info.network.speed.received }}</h4>
+                        </div>
+                    </div>
+                    <div class="usage-details">
+                        <div class="d-flex justify-content-between mb-1">
+                            <small class="text-muted">
+                                <i class="fas fa-arrow-up text-success me-1"></i>
+                                上传: {{ system_info.network.speed.sent }}
+                            </small>
+                            <small class="text-muted">
+                                <i class="fas fa-arrow-down text-primary me-1"></i>
+                                下载: {{ system_info.network.speed.received }}
+                            </small>
+                        </div>
+                        <div class="network-chart" style="height: 4px;">
+                            <div class="d-flex">
+                                <div class="flex-grow-1 bg-success bg-opacity-10" style="height: 4px;">
+                                    <div class="network-up-bar bg-success" style="height: 100%; width: 0;"></div>
+                                </div>
+                                <div class="flex-grow-1 bg-primary bg-opacity-10" style="height: 4px;">
+                                    <div class="network-down-bar bg-primary" style="height: 100%; width: 0;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 系统信息和快速操作 -->
+    <div class="row">
+        <!-- 系统信息 -->
+        <div class="col-md-8">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">系统信息</h5>
+                </div>
+                <div class="card-body">
+                    <div class="system-info">
+                        <div class="row g-3">
+                            <!-- 系统基本信息 -->
+                            <div class="col-md-6">
+                                <div class="p-3 border rounded bg-light">
+                                    <h6 class="mb-3">基本信息</h6>
+                                    <p class="mb-2"><strong>操作系统：</strong> {{ system_info.system.os_type }} {{ system_info.system.os_version }}</p>
+                                    <p class="mb-2"><strong>内核版本：</strong> {{ system_info.system.kernel }}</p>
+                                    <p class="mb-2"><strong>运行时间：</strong> {{ system_info.system.uptime }}</p>
+                                    <p class="mb-2"><strong>CPU型号：</strong> {{ system_info.cpu.info }}</p>
+                                    <p class="mb-2"><strong>内存大小：</strong> {{ system_info.memory.total }}</p>
+                                    <p class="mb-2"><strong>磁盘空间：</strong> {{ system_info.disk.total }}</p>
+                                </div>
+                            </div>
+
+                            <!-- 应用状态 -->
+                            <div class="col-md-6">
+                                <div class="p-3 border rounded bg-light">
+                                    <h6 class="mb-3">应用状态</h6>
+                                    <!-- Nginx -->
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <div class="d-flex align-items-center">
+                                            <i class="fas fa-server text-primary me-2"></i>
+                                            <span>Nginx</span>
+                                        </div>
+                                        <div class="d-flex align-items-center">
+                                            <span class="badge bg-success me-2">运行中</span>
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-primary btn-sm" onclick="controlService('nginx', 'reload')">
+                                                    <i class="fas fa-sync-alt"></i>
+                                                </button>
+                                                <button class="btn btn-outline-warning btn-sm" onclick="controlService('nginx', 'restart')">
+                                                    <i class="fas fa-redo"></i>
+                                                </button>
+                                                <button class="btn btn-outline-danger btn-sm" onclick="controlService('nginx', 'stop')">
+                                                    <i class="fas fa-stop"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- MySQL -->
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <div class="d-flex align-items-center">
+                                            <i class="fas fa-database text-info me-2"></i>
+                                            <span>MySQL</span>
+                                        </div>
+                                        <div class="d-flex align-items-center">
+                                            <span class="badge bg-success me-2">运行中</span>
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-warning btn-sm" onclick="controlService('mysql', 'restart')">
+                                                    <i class="fas fa-redo"></i>
+                                                </button>
+                                                <button class="btn btn-outline-danger btn-sm" onclick="controlService('mysql', 'stop')">
+                                                    <i class="fas fa-stop"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- PHP -->
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div class="d-flex align-items-center">
+                                            <i class="fab fa-php text-primary me-2"></i>
+                                            <span>PHP</span>
+                                        </div>
+                                        <div class="d-flex align-items-center">
+                                            <span class="badge bg-success me-2">运行中</span>
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-warning btn-sm" onclick="controlService('php', 'restart')">
+                                                    <i class="fas fa-redo"></i>
+                                                </button>
+                                                <button class="btn btn-outline-danger btn-sm" onclick="controlService('php', 'stop')">
+                                                    <i class="fas fa-stop"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 快速操作 -->
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">快速操作</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{% url 'website_manage' %}" class="btn btn-light">
+                            <i class="fas fa-globe me-2"></i>添加网站
+                        </a>
+                        <a href="{% url 'database_manage' %}" class="btn btn-light">
+                            <i class="fas fa-database me-2"></i>创建数据库
+                        </a>
+                        <a href="{% url 'file_manage' %}" class="btn btn-light">
+                            <i class="fas fa-folder me-2"></i>文件管理
+                        </a>
+                        <a href="{% url 'terminal_manage' %}" class="btn btn-light">
+                            <i class="fas fa-terminal me-2"></i>打开终端
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 最近活动 -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">最近活动</h5>
+                </div>
+                <div class="card-body">
+                    {% if recent_activities %}
+                        <div class="timeline">
+                            {% for activity in recent_activities %}
+                                <div class="timeline-item">
+                                    <div class="timeline-marker">
+                                        {% if activity.activity_type == 'login' %}
+                                            <i class="fas fa-sign-in-alt text-success"></i>
+                                        {% elif activity.activity_type == 'logout' %}
+                                            <i class="fas fa-sign-out-alt text-danger"></i>
+                                        {% elif activity.activity_type == 'install' %}
+                                            <i class="fas fa-download text-primary"></i>
+                                        {% elif activity.activity_type == 'uninstall' %}
+                                            <i class="fas fa-trash text-warning"></i>
+                                        {% else %}
+                                            <i class="fas fa-cog text-info"></i>
+                                        {% endif %}
+                                    </div>
+                                    <div class="timeline-content">
+                                        <div class="d-flex justify-content-between">
+                                            <span class="fw-bold">{{ activity.description }}</span>
+                                            <span class="text-muted small">
+                                                {% if activity.created_at|timesince == '0 minutes' %}
+                                                    刚刚
+                                                {% else %}
+                                                    {{ activity.created_at|timesince }}前
+                                                {% endif %}
+                                            </span>
+                                        </div>
+                                        <p class="text-muted small mb-0">
+                                            {% if activity.user %}
+                                                {{ activity.user.username }}
+                                            {% else %}
+                                                系统
+                                            {% endif %}
+                                            - IP: {{ activity.ip_address|default:'未知' }}
+                                        </p>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted text-center">暂无活动记录</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script>
+function controlService(service, action) {
+    // 显示确认对话框
+    let message = `确定要${action === 'reload' ? '重载' : (action === 'restart' ? '重启' : '停止')} ${service} 服务吗？`;
+    if (!confirm(message)) {
+        return;
+    }
+
+    // 发送请求到后端
+    fetch(`/api/service/${service}/${action}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`${service} ${action} 操作成功！`);
+            // 刷新页面或更新状态
+            location.reload();
+        } else {
+            alert(`操作失败：${data.error}`);
+        }
+    })
+    .catch(error => {
+        alert('操作失败，请检查网络连接');
+        console.error('Error:', error);
+    });
+}
+
+// 获取CSRF Token的函数
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// 网络流量图表动画
+function updateNetworkBars(upSpeed, downSpeed) {
+    // 假设最大速度为1Gbps，计算相对宽度
+    const maxSpeed = 1024 * 1024 * 1024; // 1 Gbps
+    const upWidth = Math.min((upSpeed / maxSpeed) * 100, 100);
+    const downWidth = Math.min((downSpeed / maxSpeed) * 100, 100);
+
+    document.querySelector('.network-up-bar').style.width = upWidth + '%';
+    document.querySelector('.network-down-bar').style.width = downWidth + '%';
+}
+
+// 更新系统信息
+function refreshSystemInfo() {
+    fetch('/api/system-info/')
+        .then(response => response.json())
+        .then(data => {
+            // 更新CPU使用率
+            document.querySelector('.stats-card:nth-child(1) h4').textContent = data.cpu.percent + '%';
+            document.querySelector('.stats-card:nth-child(1) .progress-bar').style.width = data.cpu.percent + '%';
+            document.querySelector('.stats-card:nth-child(1) .usage-details small:first-child').textContent = 
+                '已用: ' + data.cpu.used_cores + ' 核';
+
+            // 更新内存使用率
+            document.querySelector('.stats-card:nth-child(2) h4').textContent = data.memory.percent + '%';
+            document.querySelector('.stats-card:nth-child(2) .progress-bar').style.width = data.memory.percent + '%';
+            document.querySelector('.stats-card:nth-child(2) .usage-details small:first-child').textContent = 
+                '已用: ' + data.memory.used;
+
+            // 更新磁盘使用率
+            document.querySelector('.stats-card:nth-child(3) h4').textContent = data.disk.percent + '%';
+            document.querySelector('.stats-card:nth-child(3) .progress-bar').style.width = data.disk.percent + '%';
+            document.querySelector('.stats-card:nth-child(3) .usage-details small:first-child').textContent = 
+                '已用: ' + data.disk.used;
+
+            // 更新网络流量
+            document.querySelector('.stats-card:nth-child(4) h4').textContent = 
+                '↓ ' + data.network.speed.received + '/s';
+            document.querySelector('.stats-card:nth-child(4) .usage-details small:first-child').textContent = 
+                '↑ ' + data.network.speed.sent + '/s';
+            document.querySelector('.stats-card:nth-child(4) .usage-details small:last-child').textContent = 
+                '↓ ' + data.network.speed.received + '/s';
+        })
+        .catch(error => console.error('Error:', error));
+}
+
+// 页面加载完成后启动定时刷新
+document.addEventListener('DOMContentLoaded', function() {
+    setInterval(refreshSystemInfo, 2000);  // 每2秒更新一次
+});
+</script>
+{% endblock %}
+

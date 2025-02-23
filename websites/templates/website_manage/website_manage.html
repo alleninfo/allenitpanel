@@ -1,0 +1,257 @@
+{% extends 'base.html' %}
+
+{% block title %}网站管理{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 页面标题 -->
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h4>网站管理</h4>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addWebsiteModal">
+                <i class="fas fa-plus me-2"></i>添加网站
+            </button>
+        </div>
+    </div>
+
+    <!-- 网站列表 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>网站名称</th>
+                                    <th>域名</th>
+                                    <th>端口</th>
+                                    <th>PHP版本</th>
+                                    <th>状态</th>
+                                    <th>SSL</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for site in websites %}
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <i class="fas fa-globe text-primary me-2"></i>
+                                            {{ site.name }}
+                                        </div>
+                                    </td>
+                                    <td>{{ site.domain }}</td>
+                                    <td>{{ site.port }}</td>
+                                    <td>PHP {{ site.php_version }}</td>
+                                    <td>
+                                        <span class="badge {% if site.status %}bg-success{% else %}bg-danger{% endif %}">
+                                            {% if site.status %}运行中{% else %}已停止{% endif %}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if site.ssl %}
+                                        <span class="badge bg-success">已启用</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">未启用</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" title="设置"
+                                                onclick="editWebsite('{{ site.id }}')">
+                                                <i class="fas fa-cog"></i>
+                                            </button>
+                                            <button class="btn btn-outline-info" title="文件管理"
+                                                onclick="manageFiles('{{ site.id }}')">
+                                                <i class="fas fa-folder"></i>
+                                            </button>
+                                            <button class="btn btn-outline-warning" title="重启"
+                                                onclick="restartWebsite('{{ site.id }}')">
+                                                <i class="fas fa-redo"></i>
+                                            </button>
+                                            <button class="btn btn-outline-danger" title="删除"
+                                                onclick="deleteWebsite('{{ site.id }}')">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center py-4">
+                                        <div class="text-muted">
+                                            <i class="fas fa-info-circle me-2"></i>暂无网站
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 添加网站模态框 -->
+<div class="modal fade" id="addWebsiteModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">添加网站</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addWebsiteForm">
+                    {% csrf_token %}
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">网站名称</label>
+                            <input type="text" class="form-control" name="name" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">域名</label>
+                            <input type="text" class="form-control" name="domain" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">端口</label>
+                            <input type="number" class="form-control" name="port" value="80" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">PHP版本</label>
+                            <select class="form-select" name="php_version" required>
+                                <option value="7.4">PHP 7.4</option>
+                                <option value="8.0">PHP 8.0</option>
+                                <option value="8.1">PHP 8.1</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">网站目录</label>
+                            <div class="input-group">
+                                <span class="input-group-text">/www/wwwroot/</span>
+                                <input type="text" class="form-control" name="path" required>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" name="ssl" id="sslCheck">
+                                <label class="form-check-label" for="sslCheck">启用SSL</label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="submitAddWebsite()">添加</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+// 添加网站
+function submitAddWebsite() {
+    const form = document.getElementById('addWebsiteForm');
+    const formData = new FormData(form);
+
+    fetch('/websites/add/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('添加网站失败，请重试');
+    });
+}
+
+// 编辑网站
+function editWebsite(id) {
+    window.location.href = `/websites/${id}/edit/`;
+}
+
+// 文件管理
+function manageFiles(id) {
+    window.location.href = `/websites/${id}/files/`;
+}
+
+// 重启网站
+function restartWebsite(id) {
+    if (!confirm('确定要重启该网站吗？')) return;
+
+    fetch(`/websites/${id}/restart/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('重启网站失败，请重试');
+    });
+}
+
+// 删除网站
+function deleteWebsite(id) {
+    if (!confirm('确定要删除该网站吗？此操作不可恢复！')) return;
+
+    fetch(`/websites/${id}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('删除网站失败，请重试');
+    });
+}
+
+// 获取CSRF Token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}
+{% endblock %} 

@@ -1,0 +1,557 @@
+{% extends 'base.html' %}
+
+{% block title %}文件管理{% endblock %}
+
+{% block extra_css %}
+<style>
+    .file-list {
+        height: calc(100vh - 250px);
+        overflow-y: auto;
+    }
+    .file-item {
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    .file-item:hover {
+        background-color: #f8f9fa;
+    }
+    .file-item.selected {
+        background-color: #e9ecef;
+    }
+    .file-icon {
+        width: 24px;
+        text-align: center;
+    }
+    .breadcrumb-item a {
+        text-decoration: none;
+    }
+    .upload-drop-zone {
+        border: 2px dashed #ccc;
+        border-radius: 4px;
+        padding: 20px;
+        text-align: center;
+        background-color: #f8f9fa;
+        transition: border-color 0.2s;
+    }
+    .upload-drop-zone.dragover {
+        border-color: #0d6efd;
+        background-color: #e9ecef;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 页面标题和工具栏 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <!-- 面包屑导航 -->
+                    <nav aria-label="breadcrumb" class="mb-3">
+                        <ol class="breadcrumb mb-0">
+                            <li class="breadcrumb-item">
+                                <a href="#" onclick="navigateTo('/')">
+                                    <i class="fas fa-home"></i>
+                                </a>
+                            </li>
+                            {% for path in breadcrumbs %}
+                            <li class="breadcrumb-item">
+                                <a href="#" onclick="navigateTo('{{ path.path }}')">{{ path.name }}</a>
+                            </li>
+                            {% endfor %}
+                        </ol>
+                    </nav>
+
+                    <!-- 工具栏 -->
+                    <div class="btn-toolbar gap-2">
+                        <div class="btn-group">
+                            <button class="btn btn-primary" onclick="showUploadModal()">
+                                <i class="fas fa-upload me-1"></i>上传
+                            </button>
+                            <button class="btn btn-success" onclick="showNewFolderModal()">
+                                <i class="fas fa-folder-plus me-1"></i>新建文件夹
+                            </button>
+                            <button class="btn btn-info" onclick="showNewFileModal()">
+                                <i class="fas fa-file-plus me-1"></i>新建文件
+                            </button>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-warning" onclick="showRenameModal()" id="btnRename" disabled>
+                                <i class="fas fa-edit me-1"></i>重命名
+                            </button>
+                            <button class="btn btn-danger" onclick="deleteSelected()" id="btnDelete" disabled>
+                                <i class="fas fa-trash me-1"></i>删除
+                            </button>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-secondary" onclick="showPermissionsModal()" id="btnPermissions" disabled>
+                                <i class="fas fa-key me-1"></i>权限
+                            </button>
+                            <button class="btn btn-secondary" onclick="downloadSelected()" id="btnDownload" disabled>
+                                <i class="fas fa-download me-1"></i>下载
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 文件列表 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive file-list">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th width="30">
+                                        <input type="checkbox" class="form-check-input" id="selectAll">
+                                    </th>
+                                    <th>名称</th>
+                                    <th width="120">大小</th>
+                                    <th width="150">权限</th>
+                                    <th width="180">修改时间</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in files %}
+                                <tr class="file-item" data-type="{{ item.type }}" data-name="{{ item.name }}">
+                                    <td>
+                                        <input type="checkbox" class="form-check-input file-select">
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="file-icon me-2">
+                                                {% if item.type == 'dir' %}
+                                                <i class="fas fa-folder text-warning"></i>
+                                                {% else %}
+                                                <i class="fas fa-file text-primary"></i>
+                                                {% endif %}
+                                            </div>
+                                            <span>{{ item.name }}</span>
+                                        </div>
+                                    </td>
+                                    <td>{{ item.size }}</td>
+                                    <td>{{ item.permissions }}</td>
+                                    <td>{{ item.modified }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="5" class="text-center py-4">
+                                        <div class="text-muted">
+                                            <i class="fas fa-info-circle me-2"></i>当前目录为空
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 上传文件模态框 -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">上传文件</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="upload-drop-zone" id="dropZone">
+                    <i class="fas fa-cloud-upload-alt fa-3x mb-3"></i>
+                    <p class="mb-2">拖放文件到此处或点击选择文件</p>
+                    <input type="file" id="fileInput" multiple style="display: none;">
+                    <button class="btn btn-outline-primary" onclick="document.getElementById('fileInput').click()">
+                        选择文件
+                    </button>
+                </div>
+                <div class="mt-3">
+                    <div class="progress" style="display: none;">
+                        <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <div id="uploadList" class="mt-2"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新建文件夹模态框 -->
+<div class="modal fade" id="newFolderModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">新建文件夹</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">文件夹名称</label>
+                    <input type="text" class="form-control" id="newFolderName">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="createFolder()">创建</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 权限设置模态框 -->
+<div class="modal fade" id="permissionsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">设置权限</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label">所有者</label>
+                            <div>
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="ownerRead">
+                                    <label class="form-check-label">读取</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="ownerWrite">
+                                    <label class="form-check-label">写入</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="ownerExecute">
+                                    <label class="form-check-label">执行</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label">用户组</label>
+                            <div>
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="groupRead">
+                                    <label class="form-check-label">读取</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="groupWrite">
+                                    <label class="form-check-label">写入</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="groupExecute">
+                                    <label class="form-check-label">执行</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label">其他用户</label>
+                            <div>
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="otherRead">
+                                    <label class="form-check-label">读取</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="otherWrite">
+                                    <label class="form-check-label">写入</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="otherExecute">
+                                    <label class="form-check-label">执行</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="setPermissions()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+let currentPath = '/';
+let selectedFiles = new Set();
+
+// 初始化页面
+document.addEventListener('DOMContentLoaded', function() {
+    // 文件选择处理
+    document.querySelectorAll('.file-select').forEach(checkbox => {
+        checkbox.addEventListener('change', handleFileSelection);
+    });
+
+    // 全选处理
+    document.getElementById('selectAll').addEventListener('change', function(e) {
+        document.querySelectorAll('.file-select').forEach(checkbox => {
+            checkbox.checked = e.target.checked;
+            handleFileSelection.call(checkbox);
+        });
+    });
+
+    // 文件项双击处理
+    document.querySelectorAll('.file-item').forEach(item => {
+        item.addEventListener('dblclick', function() {
+            const type = this.dataset.type;
+            const name = this.dataset.name;
+            if (type === 'dir') {
+                navigateTo(currentPath + name + '/');
+            } else {
+                openFile(name);
+            }
+        });
+    });
+
+    // 拖放上传处理
+    const dropZone = document.getElementById('dropZone');
+    dropZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        this.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        handleFiles(files);
+    });
+
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+        handleFiles(this.files);
+    });
+});
+
+// 处理文件选择
+function handleFileSelection() {
+    const row = this.closest('.file-item');
+    const fileName = row.dataset.name;
+    
+    if (this.checked) {
+        selectedFiles.add(fileName);
+        row.classList.add('selected');
+    } else {
+        selectedFiles.delete(fileName);
+        row.classList.remove('selected');
+    }
+
+    updateButtonStates();
+}
+
+// 更新按钮状态
+function updateButtonStates() {
+    const hasSelection = selectedFiles.size > 0;
+    document.getElementById('btnRename').disabled = selectedFiles.size !== 1;
+    document.getElementById('btnDelete').disabled = !hasSelection;
+    document.getElementById('btnPermissions').disabled = !hasSelection;
+    document.getElementById('btnDownload').disabled = !hasSelection;
+}
+
+// 导航到指定路径
+function navigateTo(path) {
+    currentPath = path;
+    fetch(`/files/list/?path=${encodeURIComponent(path)}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // 更新页面内容
+                location.reload();
+            } else {
+                alert(data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('导航失败，请重试');
+        });
+}
+
+// 处理文件上传
+function handleFiles(files) {
+    const uploadList = document.getElementById('uploadList');
+    uploadList.innerHTML = '';
+    
+    Array.from(files).forEach(file => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('path', currentPath);
+
+        const progressDiv = document.createElement('div');
+        progressDiv.className = 'progress mb-2';
+        progressDiv.innerHTML = `
+            <div class="progress-bar" role="progressbar" style="width: 0%">
+                ${file.name}
+            </div>
+        `;
+        uploadList.appendChild(progressDiv);
+
+        fetch('/files/upload/', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                progressDiv.querySelector('.progress-bar').style.width = '100%';
+                progressDiv.querySelector('.progress-bar').classList.add('bg-success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                progressDiv.querySelector('.progress-bar').classList.add('bg-danger');
+                alert(data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            progressDiv.querySelector('.progress-bar').classList.add('bg-danger');
+            alert('上传失败，请重试');
+        });
+    });
+}
+
+// 创建文件夹
+function createFolder() {
+    const name = document.getElementById('newFolderName').value.trim();
+    if (!name) {
+        alert('请输入文件夹名称');
+        return;
+    }
+
+    fetch('/files/create-folder/', {
+        method: 'POST',
+        body: JSON.stringify({
+            path: currentPath,
+            name: name
+        }),
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('创建文件夹失败，请重试');
+    });
+}
+
+// 删除选中的文件
+function deleteSelected() {
+    if (!confirm('确定要删除选中的文件吗？此操作不可恢复！')) return;
+
+    fetch('/files/delete/', {
+        method: 'POST',
+        body: JSON.stringify({
+            path: currentPath,
+            files: Array.from(selectedFiles)
+        }),
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('删除失败，请重试');
+    });
+}
+
+// 设置权限
+function setPermissions() {
+    const permissions = {
+        owner: {
+            read: document.getElementById('ownerRead').checked,
+            write: document.getElementById('ownerWrite').checked,
+            execute: document.getElementById('ownerExecute').checked
+        },
+        group: {
+            read: document.getElementById('groupRead').checked,
+            write: document.getElementById('groupWrite').checked,
+            execute: document.getElementById('groupExecute').checked
+        },
+        other: {
+            read: document.getElementById('otherRead').checked,
+            write: document.getElementById('otherWrite').checked,
+            execute: document.getElementById('otherExecute').checked
+        }
+    };
+
+    fetch('/files/set-permissions/', {
+        method: 'POST',
+        body: JSON.stringify({
+            path: currentPath,
+            files: Array.from(selectedFiles),
+            permissions: permissions
+        }),
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('设置权限失败，请重试');
+    });
+}
+
+// 获取CSRF Token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}
+{% endblock %} 

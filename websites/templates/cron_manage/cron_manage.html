@@ -1,0 +1,389 @@
+{% extends 'base.html' %}
+
+{% block title %}定时任务管理{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 页面标题 -->
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h4>定时任务管理</h4>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTaskModal">
+                <i class="fas fa-plus me-2"></i>添加任务
+            </button>
+        </div>
+    </div>
+
+    <!-- 任务列表 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>任务名称</th>
+                                    <th>执行命令</th>
+                                    <th>执行周期</th>
+                                    <th>下次执行</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for task in tasks %}
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <i class="fas fa-clock text-primary me-2"></i>
+                                            {{ task.name }}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <code>{{ task.command }}</code>
+                                    </td>
+                                    <td>{{ task.schedule }}</td>
+                                    <td>{{ task.next_run }}</td>
+                                    <td>
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" 
+                                                   {% if task.enabled %}checked{% endif %}
+                                                   onchange="toggleTask('{{ task.id }}', this.checked)">
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" title="执行"
+                                                    onclick="runTask('{{ task.id }}')">
+                                                <i class="fas fa-play"></i>
+                                            </button>
+                                            <button class="btn btn-outline-info" title="日志"
+                                                    onclick="viewLogs('{{ task.id }}')">
+                                                <i class="fas fa-list"></i>
+                                            </button>
+                                            <button class="btn btn-outline-warning" title="编辑"
+                                                    onclick="editTask('{{ task.id }}')">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button class="btn btn-outline-danger" title="删除"
+                                                    onclick="deleteTask('{{ task.id }}')">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="text-muted">
+                                            <i class="fas fa-info-circle me-2"></i>暂无定时任务
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 添加/编辑任务模态框 -->
+<div class="modal fade" id="addTaskModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="taskModalTitle">添加定时任务</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="taskForm">
+                    {% csrf_token %}
+                    <input type="hidden" name="task_id" id="taskId">
+                    <div class="mb-3">
+                        <label class="form-label">任务名称</label>
+                        <input type="text" class="form-control" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">执行命令</label>
+                        <textarea class="form-control" name="command" rows="3" required></textarea>
+                        <div class="form-text">请输入要执行的Shell命令</div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">执行方式</label>
+                            <select class="form-select" name="schedule_type" id="scheduleType" onchange="toggleScheduleFields()">
+                                <option value="simple">简单周期</option>
+                                <option value="cron">Cron表达式</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6" id="simpleSchedule">
+                            <label class="form-label">执行周期</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" name="interval" min="1">
+                                <select class="form-select" name="interval_unit">
+                                    <option value="minutes">分钟</option>
+                                    <option value="hours">小时</option>
+                                    <option value="days">天</option>
+                                    <option value="weeks">周</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6" id="cronSchedule" style="display: none;">
+                            <label class="form-label">Cron表达式</label>
+                            <input type="text" class="form-control" name="cron_expression" 
+                                   placeholder="*/5 * * * *">
+                            <div class="form-text">分 时 日 月 周</div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" name="enabled" id="taskEnabled" checked>
+                            <label class="form-check-label" for="taskEnabled">立即启用</label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveTask()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 任务日志模态框 -->
+<div class="modal fade" id="taskLogsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">任务执行日志</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>执行时间</th>
+                                <th>状态</th>
+                                <th>输出</th>
+                            </tr>
+                        </thead>
+                        <tbody id="taskLogsBody">
+                            <!-- 日志内容将通过JavaScript动态添加 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+// 切换调度类型
+function toggleScheduleFields() {
+    const scheduleType = document.getElementById('scheduleType').value;
+    const simpleSchedule = document.getElementById('simpleSchedule');
+    const cronSchedule = document.getElementById('cronSchedule');
+    
+    if (scheduleType === 'simple') {
+        simpleSchedule.style.display = 'block';
+        cronSchedule.style.display = 'none';
+    } else {
+        simpleSchedule.style.display = 'none';
+        cronSchedule.style.display = 'block';
+    }
+}
+
+// 保存任务
+function saveTask() {
+    const form = document.getElementById('taskForm');
+    const formData = new FormData(form);
+    const taskId = formData.get('task_id');
+    const url = taskId ? `/cron/tasks/${taskId}/edit/` : '/cron/tasks/add/';
+
+    fetch(url, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('保存任务失败，请重试');
+    });
+}
+
+// 编辑任务
+function editTask(id) {
+    fetch(`/cron/tasks/${id}/`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const form = document.getElementById('taskForm');
+                form.reset();
+                
+                // 填充表单
+                form.elements['task_id'].value = id;
+                form.elements['name'].value = data.task.name;
+                form.elements['command'].value = data.task.command;
+                form.elements['enabled'].checked = data.task.enabled;
+
+                if (data.task.cron_expression) {
+                    form.elements['schedule_type'].value = 'cron';
+                    form.elements['cron_expression'].value = data.task.cron_expression;
+                } else {
+                    form.elements['schedule_type'].value = 'simple';
+                    form.elements['interval'].value = data.task.interval;
+                    form.elements['interval_unit'].value = data.task.interval_unit;
+                }
+
+                toggleScheduleFields();
+                document.getElementById('taskModalTitle').textContent = '编辑定时任务';
+                new bootstrap.Modal(document.getElementById('addTaskModal')).show();
+            } else {
+                alert(data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('加载任务信息失败，请重试');
+        });
+}
+
+// 删除任务
+function deleteTask(id) {
+    if (!confirm('确定要删除该任务吗？')) return;
+
+    fetch(`/cron/tasks/${id}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('删除任务失败，请重试');
+    });
+}
+
+// 切换任务状态
+function toggleTask(id, enabled) {
+    fetch(`/cron/tasks/${id}/toggle/`, {
+        method: 'POST',
+        body: JSON.stringify({ enabled: enabled }),
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            alert(data.error);
+            location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('切换任务状态失败，请重试');
+        location.reload();
+    });
+}
+
+// 立即执行任务
+function runTask(id) {
+    if (!confirm('确定要立即执行该任务吗？')) return;
+
+    fetch(`/cron/tasks/${id}/run/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('任务已开始执行');
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('执行任务失败，请重试');
+    });
+}
+
+// 查看任务日志
+function viewLogs(id) {
+    fetch(`/cron/tasks/${id}/logs/`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const tbody = document.getElementById('taskLogsBody');
+                tbody.innerHTML = data.logs.map(log => `
+                    <tr>
+                        <td>${log.executed_at}</td>
+                        <td>
+                            <span class="badge bg-${log.success ? 'success' : 'danger'}">
+                                ${log.success ? '成功' : '失败'}
+                            </span>
+                        </td>
+                        <td>
+                            <pre class="mb-0"><code>${log.output}</code></pre>
+                        </td>
+                    </tr>
+                `).join('');
+                
+                new bootstrap.Modal(document.getElementById('taskLogsModal')).show();
+            } else {
+                alert(data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('加载任务日志失败，请重试');
+        });
+}
+
+// 获取CSRF Token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}
+{% endblock %} 
