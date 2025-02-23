@@ -3,17 +3,23 @@ from django.contrib.auth import authenticate, login as auth_login, logout as aut
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 
-from django.http import JsonResponse
+from django.http import JsonResponse, FileResponse
 from django.views.decorators.http import require_http_methods
 import subprocess
-from .models import Website, AppStore, AppInstallLog, ActivityLog
+from .models import Website, AppStore, AppInstallLog, ActivityLog, TerminalSession
 from django.db import models
 import os
 import psutil
 import platform
 import time
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, datetime
+from django.views.decorators.csrf import csrf_exempt
+import json
+import pwd
+import grp
+import shutil
+import uuid
 
 # Create your views here.
 
@@ -252,16 +258,56 @@ def firewall_manage(request):
 
 @login_required
 def file_manage(request):
-    if not request.user.is_authenticated:
-        return redirect('login')
-    return render(request, 'file_manage/file_manage.html')
+    """文件管理视图"""
+    current_path = request.GET.get('path', '/')  # 默认显示根目录
+    parent_path = os.path.dirname(current_path) if current_path != '/' else None
+
+    try:
+        # 获取目录内容
+        items = []
+        with os.scandir(current_path) as entries:
+            for entry in entries:
+                try:
+                    stat_info = entry.stat()
+                    item = {
+                        'name': entry.name,
+                        'path': os.path.join(current_path, entry.name),
+                        'is_dir': entry.is_dir(),
+                        'size': stat_info.st_size if not entry.is_dir() else None,
+                        'modified': datetime.fromtimestamp(stat_info.st_mtime),
+                        'permissions': oct(stat_info.st_mode)[-4:],  # 获取权限
+                        'owner': pwd.getpwuid(stat_info.st_uid).pw_name,  # 获取所有者
+                        'group': grp.getgrgid(stat_info.st_gid).gr_name,  # 获取组
+                    }
+                    items.append(item)
+                except (PermissionError, FileNotFoundError):
+                    continue
+
+        # 排序：目录在前，文件在后，按名称排序
+        items.sort(key=lambda x: (not x['is_dir'], x['name'].lower()))
+
+        context = {
+            'current_path': current_path,
+            'parent_path': parent_path,
+            'items': items,
+        }
+        return render(request, 'file_manage/file_manage.html', context)
+
+    except PermissionError:
+        messages.error(request, '权限不足，无法访问该目录')
+        return redirect('file_manage')
+    except FileNotFoundError:
+        messages.error(request, '目录不存在')
+        return redirect('file_manage')
 
 
 @login_required
 def terminal_manage(request):
-    if not request.user.is_authenticated:
-        return redirect('login')
-    return render(request, 'terminal_manage/terminal_manage.html')
+    """终端管理页面"""
+    sessions = TerminalSession.objects.filter(user=request.user)
+    return render(request, 'terminal_manage/terminal_manage.html', {
+        'sessions': sessions
+    })
 
 
 @login_required
@@ -498,6 +544,594 @@ def log_activity(request, activity_type, description):
         description=description,
         ip_address=get_client_ip(request)
     )
+
+@csrf_exempt
+def apply_ssl(request):
+    if request.method == 'POST':
+        try:
+            # 获取域名
+            domain = request.POST.get('domain')
+            verify_method = request.POST.get('verifyMethod')
+            
+            if not domain:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': '域名不能为空'
+                })
+
+            # 检查域名是否已配置SSL
+            ssl_config_path = f'/etc/nginx/sites-available/{domain}'
+            if os.path.exists(ssl_config_path):
+                with open(ssl_config_path, 'r') as f:
+                    if 'listen 443 ssl' in f.read():
+                        return JsonResponse({
+                            'status': 'error',
+                            'message': '该域名已配置SSL证书'
+                        })
+
+            # 确保网站根目录存在
+            web_root = f'/var/www/{domain}'
+            if not os.path.exists(web_root):
+                os.makedirs(web_root, exist_ok=True)
+
+            # 构建certbot命令
+            if verify_method == 'http':
+                cmd = [
+                    'certbot', 'certonly', '--webroot',
+                    '-w', web_root,
+                    '-d', domain,
+                    '--non-interactive',
+                    '--agree-tos',
+                    '--email', 'admin@example.com'  # 需要替换为实际的邮箱
+                ]
+            else:
+                cmd = [
+                    'certbot', 'certonly', '--manual',
+                    '--preferred-challenges', 'dns',
+                    '-d', domain,
+                    '--non-interactive',
+                    '--agree-tos',
+                    '--email', 'admin@example.com'  # 需要替换为实际的邮箱
+                ]
+
+            # 执行certbot命令
+            process = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True
+            )
+
+            if process.returncode == 0:
+                # 配置Nginx SSL
+                if configure_nginx_ssl(domain):
+                    return JsonResponse({
+                        'status': 'success',
+                        'message': 'SSL证书已成功申请并配置'
+                    })
+                else:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'Nginx配置失败'
+                    })
+            else:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'证书申请失败: {process.stderr}'
+                })
+
+        except Exception as e:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'操作失败: {str(e)}'
+            })
+
+    return JsonResponse({
+        'status': 'error',
+        'message': '不支持的请求方法'
+    })
+
+def configure_nginx_ssl(domain):
+    """配置Nginx SSL"""
+    try:
+        cert_path = f'/etc/letsencrypt/live/{domain}/fullchain.pem'
+        key_path = f'/etc/letsencrypt/live/{domain}/privkey.pem'
+        
+        # 生成SSL配置
+        config = f"""
+server {{
+    listen 443 ssl;
+    server_name {domain};
+    
+    ssl_certificate {cert_path};
+    ssl_certificate_key {key_path};
+    
+    # SSL配置
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    
+    # HSTS配置
+    add_header Strict-Transport-Security "max-age=63072000" always;
+    
+    root /var/www/{domain};
+    index index.html index.htm index.php;
+    
+    location / {{
+        try_files $uri $uri/ /index.php?$args;
+    }}
+    
+    location ~ \.php$ {{
+        fastcgi_pass unix:/var/run/php/php-fpm.sock;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }}
+}}
+
+server {{
+    listen 80;
+    server_name {domain};
+    return 301 https://$server_name$request_uri;
+}}
+"""
+        
+        # 写入配置文件
+        config_path = f'/etc/nginx/sites-available/{domain}'
+        with open(config_path, 'w') as f:
+            f.write(config)
+        
+        # 创建符号链接
+        enabled_path = f'/etc/nginx/sites-enabled/{domain}'
+        if not os.path.exists(enabled_path):
+            os.symlink(config_path, enabled_path)
+        
+        # 测试配置
+        test_result = subprocess.run(['nginx', '-t'], capture_output=True, text=True)
+        if test_result.returncode == 0:
+            # 重启Nginx
+            subprocess.run(['systemctl', 'reload', 'nginx'])
+            return True
+        else:
+            print(f"Nginx配置测试失败: {test_result.stderr}")
+            return False
+            
+    except Exception as e:
+        print(f"配置Nginx SSL时发生错误: {str(e)}")
+        return False
+
+@csrf_exempt
+def upload_ssl(request):
+    if request.method == 'POST':
+        try:
+            domain = request.POST.get('domain')
+            cert_file = request.FILES.get('certFile')
+            key_file = request.FILES.get('keyFile')
+            chain_file = request.FILES.get('chainFile')
+            
+            if not domain:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': '域名不能为空'
+                })
+                
+            if not cert_file or not key_file:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': '请上传证书文件和私钥文件'
+                })
+
+            # 创建证书存储目录
+            ssl_dir = f'/etc/ssl/private/{domain}'
+            os.makedirs(ssl_dir, exist_ok=True)
+            
+            # 保存证书文件
+            cert_path = os.path.join(ssl_dir, f'{domain}.crt')
+            key_path = os.path.join(ssl_dir, f'{domain}.key')
+            chain_path = os.path.join(ssl_dir, f'{domain}_chain.crt') if chain_file else None
+            
+            with open(cert_path, 'wb+') as f:
+                for chunk in cert_file.chunks():
+                    f.write(chunk)
+            
+            with open(key_path, 'wb+') as f:
+                for chunk in key_file.chunks():
+                    f.write(chunk)
+            
+            if chain_file:
+                with open(chain_path, 'wb+') as f:
+                    for chunk in chain_file.chunks():
+                        f.write(chunk)
+            
+            # 设置适当的文件权限
+            os.chmod(cert_path, 0o644)
+            os.chmod(key_path, 0o600)
+            if chain_path:
+                os.chmod(chain_path, 0o644)
+            
+            # 配置 Nginx SSL
+            config = f"""
+server {{
+    listen 443 ssl;
+    server_name {domain};
+    
+    ssl_certificate {cert_path};
+    ssl_certificate_key {key_path};
+    {f'ssl_trusted_certificate {chain_path};' if chain_path else ''}
+    
+    # SSL配置
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    
+    # HSTS配置
+    add_header Strict-Transport-Security "max-age=63072000" always;
+    
+    root /var/www/{domain};
+    index index.html index.htm index.php;
+    
+    location / {{
+        try_files $uri $uri/ /index.php?$args;
+    }}
+    
+    location ~ \.php$ {{
+        fastcgi_pass unix:/var/run/php/php-fpm.sock;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }}
+}}
+
+server {{
+    listen 80;
+    server_name {domain};
+    return 301 https://$server_name$request_uri;
+}}
+"""
+            
+            # 写入 Nginx 配置
+            config_path = f'/etc/nginx/sites-available/{domain}'
+            with open(config_path, 'w') as f:
+                f.write(config)
+            
+            # 创建符号链接
+            enabled_path = f'/etc/nginx/sites-enabled/{domain}'
+            if not os.path.exists(enabled_path):
+                os.symlink(config_path, enabled_path)
+            
+            # 测试 Nginx 配置
+            test_result = subprocess.run(['nginx', '-t'], capture_output=True, text=True)
+            if test_result.returncode == 0:
+                # 重启 Nginx
+                subprocess.run(['systemctl', 'reload', 'nginx'])
+                return JsonResponse({
+                    'status': 'success',
+                    'message': 'SSL证书已成功上传并配置'
+                })
+            else:
+                # 配置测试失败，清理文件
+                os.remove(config_path)
+                if os.path.exists(enabled_path):
+                    os.remove(enabled_path)
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Nginx配置测试失败: {test_result.stderr}'
+                })
+            
+        except Exception as e:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'上传证书失败: {str(e)}'
+            })
+    
+    return JsonResponse({
+        'status': 'error',
+        'message': '不支持的请求方法'
+    })
+
+def get_file_info(path):
+    """获取文件信息"""
+    try:
+        stat_info = os.stat(path)
+        return {
+            'size': stat_info.st_size,
+            'modified': datetime.fromtimestamp(stat_info.st_mtime),
+            'permissions': oct(stat_info.st_mode)[-4:],
+            'owner': pwd.getpwuid(stat_info.st_uid).pw_name,
+            'group': grp.getgrgid(stat_info.st_gid).gr_name,
+        }
+    except (PermissionError, FileNotFoundError):
+        return None
+
+@csrf_exempt
+def upload_file(request):
+    """处理文件上传"""
+    if request.method == 'POST':
+        try:
+            upload_path = request.GET.get('path', '/')
+            uploaded_file = request.FILES['file']
+            file_path = os.path.join(upload_path, uploaded_file.name)
+            
+            with open(file_path, 'wb+') as destination:
+                for chunk in uploaded_file.chunks():
+                    destination.write(chunk)
+            
+            return JsonResponse({'status': 'success'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)})
+    
+    return JsonResponse({'status': 'error', 'message': '不支持的请求方法'})
+
+def download_file(request):
+    """处理文件下载"""
+    file_path = request.GET.get('path')
+    if file_path and os.path.exists(file_path) and os.path.isfile(file_path):
+        return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=os.path.basename(file_path))
+    return JsonResponse({'status': 'error', 'message': '文件不存在'})
+
+@csrf_exempt
+def create_folder(request):
+    """创建文件夹"""
+    if request.method == 'POST':
+        try:
+            current_path = request.POST.get('current_path')
+            folder_name = request.POST.get('folder_name')
+            new_folder_path = os.path.join(current_path, folder_name)
+            
+            if not os.path.exists(new_folder_path):
+                os.makedirs(new_folder_path)
+                messages.success(request, '文件夹创建成功')
+            else:
+                messages.error(request, '文件夹已存在')
+        except Exception as e:
+            messages.error(request, f'创建文件夹失败：{str(e)}')
+        
+        return redirect(f'/file_manage/?path={current_path}')
+    return redirect('file_manage')
+
+@csrf_exempt
+def rename_item(request):
+    """重命名文件或文件夹"""
+    if request.method == 'POST':
+        try:
+            old_path = request.POST.get('old_path')
+            new_name = request.POST.get('new_name')
+            current_path = os.path.dirname(old_path)
+            new_path = os.path.join(current_path, new_name)
+            
+            if not os.path.exists(new_path):
+                os.rename(old_path, new_path)
+                messages.success(request, '重命名成功')
+            else:
+                messages.error(request, '目标名称已存在')
+        except Exception as e:
+            messages.error(request, f'重命名失败：{str(e)}')
+        
+        return redirect(f'/file_manage/?path={current_path}')
+    return redirect('file_manage')
+
+@csrf_exempt
+def delete_item(request):
+    """删除文件或文件夹"""
+    if request.method == 'POST':
+        try:
+            path = request.POST.get('path')
+            current_path = os.path.dirname(path)
+            
+            if os.path.isdir(path):
+                import shutil
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+            messages.success(request, '删除成功')
+        except Exception as e:
+            messages.error(request, f'删除失败：{str(e)}')
+        
+        return redirect(f'/file_manage/?path={current_path}')
+    return redirect('file_manage')
+
+@csrf_exempt
+def create_file(request):
+    """创建新文件"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            current_path = data.get('current_path')
+            file_name = data.get('file_name')
+            file_path = os.path.join(current_path, file_name)
+            
+            if not os.path.exists(file_path):
+                with open(file_path, 'w') as f:
+                    f.write('')
+                return JsonResponse({'status': 'success'})
+            else:
+                return JsonResponse({'status': 'error', 'message': '文件已存在'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)})
+    return JsonResponse({'status': 'error', 'message': '不支持的请求方法'})
+
+def read_file(request):
+    """读取文件内容"""
+    try:
+        file_path = request.GET.get('path')
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            with open(file_path, 'r') as f:
+                content = f.read()
+            return JsonResponse({'status': 'success', 'content': content})
+        return JsonResponse({'status': 'error', 'message': '文件不存在'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+@csrf_exempt
+def save_file(request):
+    """保存文件内容"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            file_path = data.get('path')
+            content = data.get('content')
+            
+            with open(file_path, 'w') as f:
+                f.write(content)
+            return JsonResponse({'status': 'success'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)})
+    return JsonResponse({'status': 'error', 'message': '不支持的请求方法'})
+
+@csrf_exempt
+def paste_items(request):
+    """粘贴文件或文件夹"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            items = data.get('items', [])
+            action = data.get('action')
+            destination = data.get('destination')
+            
+            for item_path in items:
+                item_name = os.path.basename(item_path)
+                new_path = os.path.join(destination, item_name)
+                
+                if action == 'cut':
+                    shutil.move(item_path, new_path)
+                else:  # copy
+                    if os.path.isdir(item_path):
+                        shutil.copytree(item_path, new_path)
+                    else:
+                        shutil.copy2(item_path, new_path)
+                        
+            return JsonResponse({'status': 'success'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)})
+    return JsonResponse({'status': 'error', 'message': '不支持的请求方法'})
+
+@csrf_exempt
+def batch_delete(request):
+    """批量删除文件或文件夹"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            items = data.get('items', [])
+            
+            for item_path in items:
+                if os.path.isdir(item_path):
+                    shutil.rmtree(item_path)
+                else:
+                    os.remove(item_path)
+                    
+            return JsonResponse({'status': 'success'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)})
+    return JsonResponse({'status': 'error', 'message': '不支持的请求方法'})
+
+@login_required
+@csrf_exempt
+def create_terminal(request):
+    """创建新终端"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            title = data.get('title')
+            session_id = str(uuid.uuid4())
+            
+            session = TerminalSession.objects.create(
+                user=request.user,
+                session_id=session_id,
+                title=title
+            )
+            
+            return JsonResponse({
+                'status': 'success',
+                'session_id': session_id
+            })
+        except Exception as e:
+            return JsonResponse({
+                'status': 'error',
+                'message': str(e)
+            })
+    
+    return JsonResponse({
+        'status': 'error',
+        'message': '不支持的请求方法'
+    })
+
+@login_required
+@csrf_exempt
+def close_terminal(request):
+    """关闭终端"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            session_id = data.get('session_id')
+            
+            session = TerminalSession.objects.get(
+                session_id=session_id,
+                user=request.user
+            )
+            
+            if session.pid:
+                try:
+                    import os
+                    os.kill(session.pid, 9)
+                except OSError:
+                    pass
+            
+            session.status = 'closed'
+            session.save()
+            
+            return JsonResponse({'status': 'success'})
+        except Exception as e:
+            return JsonResponse({
+                'status': 'error',
+                'message': str(e)
+            })
+    
+    return JsonResponse({
+        'status': 'error',
+        'message': '不支持的请求方法'
+    })
+
+@login_required
+def terminal_logs(request):
+    """获取终端日志"""
+    try:
+        session_id = request.GET.get('session_id')
+        session = TerminalSession.objects.get(
+            session_id=session_id,
+            user=request.user
+        )
+        
+        # 这里需要实现日志获取逻辑
+        logs = "终端日志示例\n"  # 替换为实际的日志内容
+        
+        return JsonResponse({
+            'status': 'success',
+            'logs': logs
+        })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        })
+
+@login_required
+def terminal_status(request):
+    """获取终端状态"""
+    try:
+        sessions = TerminalSession.objects.filter(user=request.user)
+        status_data = [{
+            'session_id': session.session_id,
+            'status': session.status
+        } for session in sessions]
+        
+        return JsonResponse({
+            'status': 'success',
+            'sessions': status_data
+        })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e)
+        })
 
 
 

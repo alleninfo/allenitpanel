@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'websites',
+    'channels',
 ]
 
 MIDDLEWARE = [
@@ -131,6 +132,19 @@ LOGIN_URL = '/login/'
 LOGOUT_REDIRECT_URL = '/login/'
 
 LOGIN_REDIRECT_URL = '/dashboard/'
+
+
+
+
+# 添加 ASGI 应用配置
+ASGI_APPLICATION = 'allenpanel.asgi.application'
+
+# 添加 Channel Layers 配置
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer'
+    }
+}
 
 
 

@@ -82,3 +82,22 @@ class ActivityLog(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+class TerminalSession(models.Model):
+    STATUS_CHOICES = (
+        ('active', '活动'),
+        ('closed', '已关闭'),
+    )
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name='用户')
+    session_id = models.CharField(max_length=50, unique=True, verbose_name='会话ID')
+    title = models.CharField(max_length=100, verbose_name='标题')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', verbose_name='状态')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    last_active = models.DateTimeField(auto_now=True, verbose_name='最后活动时间')
+    pid = models.IntegerField(null=True, blank=True, verbose_name='进程ID')
+
+    class Meta:
+        verbose_name = '终端会话'
+        verbose_name_plural = '终端会话'
+        ordering = ['-created_at']
