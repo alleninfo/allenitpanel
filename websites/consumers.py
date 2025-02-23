@@ -8,8 +8,6 @@ import select
 from channels.generic.websocket import WebsocketConsumer
 from threading import Thread
 from django.contrib.auth.models import User
-from asgiref.sync import async_to_sync
-from .models import TerminalSession
 
 class TerminalConsumer(WebsocketConsumer):
     def __init__(self, *args, **kwargs):
@@ -19,18 +17,8 @@ class TerminalConsumer(WebsocketConsumer):
         self.fd = None
 
     def connect(self):
+        # 检查用户认证
         if not self.scope['user'].is_authenticated:
-            self.close()
-            return
-            
-        session_id = self.scope['query_string'].decode().split('=')[1]
-        try:
-            self.terminal_session = TerminalSession.objects.get(
-                session_id=session_id,
-                user=self.scope['user'],
-                status='active'
-            )
-        except TerminalSession.DoesNotExist:
             self.close()
             return
             
@@ -40,18 +28,20 @@ class TerminalConsumer(WebsocketConsumer):
         self.pid, self.fd = pty.fork()
         
         if self.pid == 0:  # 子进程
+            # 设置环境变量
+            os.environ['TERM'] = 'xterm-256color'
+            os.environ['COLORTERM'] = 'truecolor'
+            os.environ['HOME'] = os.path.expanduser('~')
+            os.environ['LANG'] = 'en_US.UTF-8'
+            
+            # 执行shell
             shell = os.environ.get('SHELL', '/bin/bash')
-            os.execvp(shell, [shell])
+            os.execvp(shell, [shell, '-l'])
         else:  # 父进程
-            self.terminal_session.pid = self.pid
-            self.terminal_session.save()
+            # 开启线程读取终端输出
             Thread(target=self.read_output, daemon=True).start()
 
     def disconnect(self, close_code):
-        if hasattr(self, 'terminal_session'):
-            self.terminal_session.status = 'closed'
-            self.terminal_session.save()
-        
         if self.pid:
             try:
                 os.kill(self.pid, 9)

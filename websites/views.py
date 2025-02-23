@@ -1120,6 +1120,7 @@ def terminal_status(request):
         sessions = TerminalSession.objects.filter(user=request.user)
         status_data = [{
             'session_id': session.session_id,
+            'title': session.title,
             'status': session.status
         } for session in sessions]
         

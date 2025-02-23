@@ -4,93 +4,19 @@
 {% block title %}终端管理{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'xterm/css/xterm.css' %}">
 <style>
     #terminal {
+        height: calc(100vh - 150px);
         background-color: #1e1e1e;
-        color: #ffffff;
-        font-family: 'Courier New', Courier, monospace;
+    }
+
+    .terminal {
         padding: 10px;
-        height: calc(100vh - 200px);
-        overflow-y: auto;
-        border-radius: 4px;
     }
 
-    #terminal pre {
-        margin: 0;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-    }
-
-    #cmdInput {
-        background-color: #1e1e1e;
-        color: #ffffff;
-        border: none;
-        width: 100%;
-        padding: 5px;
-        font-family: 'Courier New', Courier, monospace;
-    }
-
-    #cmdInput:focus {
-        outline: none;
-    }
-
-    .command-line {
-        display: flex;
-        align-items: center;
-        margin-bottom: 5px;
-    }
-
-    .prompt {
-        color: #00ff00;
-        margin-right: 10px;
-        user-select: none;
-    }
-
-    .output {
-        color: #cccccc;
-        margin-left: 20px;
-    }
-
-    .error {
-        color: #ff6b6b;
-        margin-left: 20px;
-    }
-
-    .toolbar {
-        background-color: #2d2d2d;
-        padding: 10px;
-        border-radius: 4px 4px 0 0;
-    }
-
-    .toolbar button {
-        margin-right: 5px;
-    }
-
-    .terminal-container {
-        border: 1px solid #2d2d2d;
-        border-radius: 4px;
-        margin-bottom: 20px;
-    }
-
-    .command-history {
-        max-height: 300px;
-        overflow-y: auto;
-    }
-
-    .history-item {
-        cursor: pointer;
-        padding: 5px 10px;
-        transition: background-color 0.2s;
-    }
-
-    .history-item:hover {
-        background-color: #f8f9fa;
-    }
-
-    .shortcut-key {
-        font-size: 0.8em;
-        color: #6c757d;
-        margin-left: 5px;
+    .xterm-viewport {
+        overflow-y: auto !important;
     }
 </style>
 {% endblock %}
@@ -99,195 +25,150 @@
 <div class="container-fluid">
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="card-title mb-0">终端管理</h5>
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newTerminalModal">
-                <i class="fas fa-plus"></i> 新建终端
-            </button>
-        </div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>会话ID</th>
-                            <th>标题</th>
-                            <th>用户</th>
-                            <th>状态</th>
-                            <th>创建时间</th>
-                            <th>最后活动</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for session in sessions %}
-                        <tr>
-                            <td>{{ session.session_id }}</td>
-                            <td>{{ session.title }}</td>
-                            <td>{{ session.user.username }}</td>
-                            <td>
-                                {% if session.status == 'active' %}
-                                    <span class="badge bg-success">活动</span>
-                                {% else %}
-                                    <span class="badge bg-secondary">已关闭</span>
-                                {% endif %}
-                            </td>
-                            <td>{{ session.created_at|date:"Y-m-d H:i:s" }}</td>
-                            <td>{{ session.last_active|date:"Y-m-d H:i:s" }}</td>
-                            <td>
-                                <div class="btn-group">
-                                    {% if session.status == 'active' %}
-                                    <a href="{% url 'terminal' %}?session={{ session.session_id }}" 
-                                       class="btn btn-sm btn-primary" target="_blank">
-                                        <i class="fas fa-terminal"></i> 连接
-                                    </a>
-                                    <button class="btn btn-sm btn-danger" 
-                                            onclick="closeTerminal('{{ session.session_id }}')">
-                                        <i class="fas fa-times"></i> 关闭
-                                    </button>
-                                    {% endif %}
-                                    <button class="btn btn-sm btn-info" 
-                                            onclick="showLogs('{{ session.session_id }}')">
-                                        <i class="fas fa-history"></i> 日志
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="7" class="text-center">暂无终端会话</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <h5 class="card-title mb-0">终端</h5>
+            <div class="btn-group">
+                <button class="btn btn-sm btn-outline-secondary" onclick="clearTerminal()">
+                    <i class="fas fa-eraser"></i> 清屏
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="reconnectTerminal()">
+                    <i class="fas fa-sync"></i> 重连
+                </button>
             </div>
         </div>
-    </div>
-</div>
-
-<!-- 新建终端模态框 -->
-<div class="modal fade" id="newTerminalModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">新建终端</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form id="newTerminalForm">
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">终端标题</label>
-                        <input type="text" class="form-control" name="title" required>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="submit" class="btn btn-primary">创建</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- 终端日志模态框 -->
-<div class="modal fade" id="logsModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">终端日志</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <pre id="terminalLogs" style="max-height: 400px; overflow-y: auto;"></pre>
-            </div>
+        <div class="card-body p-0">
+            <div id="terminal"></div>
         </div>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'xterm/lib/xterm.js' %}"></script>
+<script src="{% static 'xterm/lib/xterm-addon-fit.js' %}"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // 新建终端
-    document.getElementById('newTerminalForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        
-        fetch('{% url "create_terminal" %}', {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': '{{ csrf_token }}',
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                title: formData.get('title')
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                window.location.href = `/terminal/?session=${data.session_id}`;
-            } else {
-                alert('创建终端失败：' + data.message);
-            }
-        });
-    });
-});
+let term = null;
+let fitAddon = null;
+let ws = null;
 
-// 关闭终端
-function closeTerminal(sessionId) {
-    if (confirm('确定要关闭此终端吗？')) {
-        fetch('{% url "close_terminal" %}', {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': '{{ csrf_token }}',
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                session_id: sessionId
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                window.location.reload();
-            } else {
-                alert('关闭终端失败：' + data.message);
-            }
-        });
+// 初始化终端
+function initTerminal() {
+    // 创建终端实例
+    term = new Terminal({
+        cursorBlink: true,
+        fontSize: 14,
+        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+        theme: {
+            background: '#1e1e1e',
+            foreground: '#ffffff',
+            cursor: '#ffffff',
+            selection: 'rgba(255, 255, 255, 0.3)',
+            black: '#000000',
+            red: '#e06c75',
+            green: '#98c379',
+            yellow: '#d19a66',
+            blue: '#61afef',
+            magenta: '#c678dd',
+            cyan: '#56b6c2',
+            white: '#abb2bf',
+            brightBlack: '#5c6370',
+            brightRed: '#e06c75',
+            brightGreen: '#98c379',
+            brightYellow: '#d19a66',
+            brightBlue: '#61afef',
+            brightMagenta: '#c678dd',
+            brightCyan: '#56b6c2',
+            brightWhite: '#ffffff'
+        },
+        allowTransparency: true,
+        scrollback: 1000,
+        cols: 100,
+        rows: 30
+    });
+
+    // 加载 FitAddon 插件
+    fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+
+    // 打开终端
+    term.open(document.getElementById('terminal'));
+    fitAddon.fit();
+
+    // 连接WebSocket
+    connectWebSocket();
+
+    // 窗口大小改变时调整终端大小
+    window.addEventListener('resize', () => {
+        fitAddon.fit();
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'resize',
+                cols: term.cols,
+                rows: term.rows
+            }));
+        }
+    });
+}
+
+// 连接WebSocket
+function connectWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${protocol}//${window.location.host}/ws/terminal/`);
+
+    ws.onopen = () => {
+        term.write('\r\n\x1B[1;32m终端已连接\x1B[0m\r\n');
+        
+        // 发送终端大小
+        ws.send(JSON.stringify({
+            type: 'resize',
+            cols: term.cols,
+            rows: term.rows
+        }));
+    };
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'terminal_output') {
+            term.write(data.output);
+        }
+    };
+
+    ws.onclose = () => {
+        term.write('\r\n\x1B[1;31m终端已断开连接\x1B[0m\r\n');
+    };
+
+    ws.onerror = (error) => {
+        console.error('WebSocket错误:', error);
+        term.write('\r\n\x1B[1;31m连接错误\x1B[0m\r\n');
+    };
+
+    // 终端输入处理
+    term.onData(data => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'terminal_input',
+                input: data
+            }));
+        }
+    });
+}
+
+// 清屏
+function clearTerminal() {
+    if (term) {
+        term.clear();
     }
 }
 
-// 显示终端日志
-function showLogs(sessionId) {
-    fetch(`{% url "terminal_logs" %}?session_id=${sessionId}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                document.getElementById('terminalLogs').textContent = data.logs;
-                new bootstrap.Modal(document.getElementById('logsModal')).show();
-            } else {
-                alert('获取日志失败：' + data.message);
-            }
-        });
+// 重新连接
+function reconnectTerminal() {
+    if (ws) {
+        ws.close();
+    }
+    term.clear();
+    connectWebSocket();
 }
 
-// 自动刷新活动终端状态
-setInterval(function() {
-    fetch('{% url "terminal_status" %}')
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                // 更新终端状态显示
-                data.sessions.forEach(session => {
-                    const statusCell = document.querySelector(`tr[data-session="${session.session_id}"] .status`);
-                    if (statusCell) {
-                        statusCell.innerHTML = session.status === 'active' 
-                            ? '<span class="badge bg-success">活动</span>'
-                            : '<span class="badge bg-secondary">已关闭</span>';
-                    }
-                });
-            }
-        });
-}, 30000);  // 每30秒刷新一次
+// 页面加载完成后初始化终端
+document.addEventListener('DOMContentLoaded', initTerminal);
 </script>
 {% endblock %} 
