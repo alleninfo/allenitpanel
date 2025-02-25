@@ -321,6 +321,18 @@ def cron_manage(request):
 def app_store(request):
     """应用商店主页"""
     apps = AppStore.objects.all()
+    
+    # 更新应用的实际安装状态
+    for app in apps:
+        real_status = check_app_installed(app.name)
+        if app.is_installed != real_status:
+            app.is_installed = real_status
+            app.save()
+            
+            # 记录状态变更
+            status_str = "已安装" if real_status else "未安装"
+            log_activity(request, 'system', f'检测到应用 {app.name} 状态变更为: {status_str}')
+    
     categories = AppStore.APP_CATEGORIES
     return render(request, 'app_store/app_store.html', {
         'apps': apps,
@@ -1136,9 +1148,102 @@ def terminal_status(request):
 
 
 
+def check_app_installed(app_name):
+    """检查应用是否实际安装在系统中"""
+    try:
+        if app_name.lower() == 'nginx':
+            # 检查 nginx 是否安装并能正常运行
+            which_result = subprocess.run(['which', 'nginx'], capture_output=True)
+            if which_result.returncode != 0:
+                return False
+            # 检查服务状态
+            status_result = subprocess.run(['systemctl', 'is-active', 'nginx'], capture_output=True, text=True)
+            if status_result.stdout.strip() != 'active':
+                return False
+            # 检查进程
+            ps_result = subprocess.run(['pgrep', 'nginx'], capture_output=True)
+            return ps_result.returncode == 0
+            
+        elif app_name.lower() == 'mysql':
+            # 检查 mysql 客户端和服务器
+            which_result = subprocess.run(['which', 'mysql'], capture_output=True)
+            if which_result.returncode != 0:
+                return False
+            # 检查 mysql/mysqld 服务状态
+            for service in ['mysqld', 'mysql']:
+                status_result = subprocess.run(['systemctl', 'is-active', service], capture_output=True, text=True)
+                if status_result.stdout.strip() == 'active':
+                    # 检查进程
+                    ps_result = subprocess.run(['pgrep', 'mysql'], capture_output=True)
+                    return ps_result.returncode == 0
+            return False
+            
+        elif app_name.lower() == 'php':
+            # 检查 PHP 命令
+            which_result = subprocess.run(['which', 'php'], capture_output=True)
+            if which_result.returncode != 0:
+                return False
+            # 检查 PHP 版本
+            version_result = subprocess.run(['php', '-v'], capture_output=True)
+            if version_result.returncode != 0:
+                return False
+            # 检查 PHP-FPM 服务
+            php_services = ['php-fpm', 'php7.4-fpm', 'php8.0-fpm', 'php8.1-fpm', 'php8.2-fpm']
+            for service in php_services:
+                status_result = subprocess.run(['systemctl', 'is-active', service], capture_output=True, text=True)
+                if status_result.stdout.strip() == 'active':
+                    # 检查进程
+                    ps_result = subprocess.run(['pgrep', 'php-fpm'], capture_output=True)
+                    return ps_result.returncode == 0
+            return False
+            
+        elif app_name.lower() == 'redis':
+            # 检查 Redis 命令行工具
+            which_result = subprocess.run(['which', 'redis-cli'], capture_output=True)
+            if which_result.returncode != 0:
+                return False
+            # 检查 Redis 服务状态
+            status_result = subprocess.run(['systemctl', 'is-active', 'redis'], capture_output=True, text=True)
+            if status_result.stdout.strip() != 'active':
+                return False
+            # 检查进程
+            ps_result = subprocess.run(['pgrep', 'redis'], capture_output=True)
+            return ps_result.returncode == 0
+            
+        elif app_name.lower() == 'docker':
+            # 检查 Docker 命令
+            which_result = subprocess.run(['which', 'docker'], capture_output=True)
+            if which_result.returncode != 0:
+                return False
+            # 检查 Docker 服务状态
+            status_result = subprocess.run(['systemctl', 'is-active', 'docker'], capture_output=True, text=True)
+            if status_result.stdout.strip() != 'active':
+                return False
+            # 检查进程
+            ps_result = subprocess.run(['pgrep', 'docker'], capture_output=True)
+            return ps_result.returncode == 0
+            
+        return False
+    except Exception as e:
+        print(f"检查应用 {app_name} 状态时出错: {str(e)}")
+        return False
 
 
 
 
-
+def check_app_installed(app_name):
+    """检查应用是否实际安装在系统中"""
+    try:
+        if app_name == 'nginx':
+            result = subprocess.run(['which', 'nginx'], capture_output=True)
+            return result.returncode == 0
+        elif app_name == 'mysql':
+            result = subprocess.run(['which', 'mysql'], capture_output=True)
+            return result.returncode == 0
+        elif app_name == 'php':
+            result = subprocess.run(['which', 'php'], capture_output=True)
+            return result.returncode == 0
+        return False
+    except:
+        return False
 
