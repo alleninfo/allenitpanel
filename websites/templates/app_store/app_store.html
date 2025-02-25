@@ -3,6 +3,29 @@
 {% block title %}应用商店{% endblock %}
 
 {% block content %}
+<style>
+/* 自定义导航栏样式 */
+.nav-pills .nav-link {
+    color: #6c757d;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    margin-right: 8px;
+    font-weight: 500;
+}
+
+.nav-pills .nav-link:hover {
+    color: #495057;
+    background-color: #e9ecef;
+}
+
+.nav-pills .nav-link.active {
+    color: #fff !important;
+    background-color: #0d6efd !important;
+    border-color: #0d6efd;
+    font-weight: 600;
+}
+</style>
+
 <div class="container-fluid">
     <!-- 页面标题和搜索栏 -->
     <div class="row mb-4">
@@ -25,111 +48,46 @@
         <div class="col-12">
             <div class="nav nav-pills" id="appCategories">
                 <button class="nav-link active" data-category="all">全部</button>
-                <button class="nav-link" data-category="web">Web服务器</button>
-                <button class="nav-link" data-category="database">数据库</button>
-                <button class="nav-link" data-category="language">编程语言</button>
-                <button class="nav-link" data-category="cache">缓存服务</button>
-                <button class="nav-link" data-category="tools">系统工具</button>
+                {% for category, name in categories %}
+                <button class="nav-link" data-category="{{ category }}">{{ name }}</button>
+                {% endfor %}
             </div>
         </div>
     </div>
 
     <!-- 应用列表 -->
     <div class="row" id="appList">
-        <!-- Web服务器 -->
-        <div class="col-md-4 col-lg-3 mb-4" data-category="web">
-            <div class="card h-100">
+        {% for app in apps %}
+        <div class="col-md-4 col-lg-3 mb-4" data-category="{{ app.category }}">
+            <div class="card h-100" data-app-id="{{ app.id }}">
                 <div class="card-body">
                     <div class="d-flex align-items-center mb-3">
-                        <i class="fas fa-server fa-2x text-primary me-3"></i>
+                        <i class="{{ app.icon_class }} fa-2x text-primary me-3"></i>
                         <div>
-                            <h5 class="card-title mb-0">Nginx</h5>
-                            <small class="text-muted">高性能Web服务器</small>
+                            <h5 class="card-title mb-0">{{ app.name }}</h5>
+                            <small class="text-muted">{{ app.get_category_display }}</small>
                         </div>
                     </div>
-                    <p class="card-text">支持高并发、负载均衡的Web服务器和反向代理服务器。</p>
+                    <p class="card-text">{{ app.description }}</p>
+                    <small class="text-muted">版本: {{ app.version }}</small>
                 </div>
                 <div class="card-footer bg-transparent">
                     <div class="d-flex justify-content-between align-items-center">
+                        {% if app.is_installed %}
                         <span class="badge bg-success">已安装</span>
-                        <button class="btn btn-sm btn-outline-primary" onclick="manageApp('nginx')">
+                        <button class="btn btn-sm btn-outline-primary" onclick="manageApp('{{ app.name|lower }}')">
                             管理
                         </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- MySQL -->
-        <div class="col-md-4 col-lg-3 mb-4" data-category="database">
-            <div class="card h-100">
-                <div class="card-body">
-                    <div class="d-flex align-items-center mb-3">
-                        <i class="fas fa-database fa-2x text-info me-3"></i>
-                        <div>
-                            <h5 class="card-title mb-0">MySQL</h5>
-                            <small class="text-muted">关系型数据库</small>
-                        </div>
-                    </div>
-                    <p class="card-text">流行的开源关系型数据库管理系统。</p>
-                </div>
-                <div class="card-footer bg-transparent">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span class="badge bg-success">已安装</span>
-                        <button class="btn btn-sm btn-outline-primary" onclick="manageApp('mysql')">
-                            管理
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Redis -->
-        <div class="col-md-4 col-lg-3 mb-4" data-category="cache">
-            <div class="card h-100">
-                <div class="card-body">
-                    <div class="d-flex align-items-center mb-3">
-                        <i class="fas fa-memory fa-2x text-danger me-3"></i>
-                        <div>
-                            <h5 class="card-title mb-0">Redis</h5>
-                            <small class="text-muted">内存数据库</small>
-                        </div>
-                    </div>
-                    <p class="card-text">高性能的内存数据库和缓存服务。</p>
-                </div>
-                <div class="card-footer bg-transparent">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <button class="btn btn-sm btn-primary" onclick="installApp('redis')">
+                        {% else %}
+                        <button class="btn btn-sm btn-primary" onclick="installApp('{{ app.id }}')">
                             安装
                         </button>
+                        {% endif %}
                     </div>
                 </div>
             </div>
         </div>
-
-        <!-- PHP -->
-        <div class="col-md-4 col-lg-3 mb-4" data-category="language">
-            <div class="card h-100">
-                <div class="card-body">
-                    <div class="d-flex align-items-center mb-3">
-                        <i class="fab fa-php fa-2x text-primary me-3"></i>
-                        <div>
-                            <h5 class="card-title mb-0">PHP</h5>
-                            <small class="text-muted">服务端脚本语言</small>
-                        </div>
-                    </div>
-                    <p class="card-text">流行的服务器端脚本语言。</p>
-                </div>
-                <div class="card-footer bg-transparent">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span class="badge bg-success">已安装</span>
-                        <button class="btn btn-sm btn-outline-primary" onclick="manageApp('php')">
-                            管理
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
+        {% endfor %}
     </div>
 </div>
 
@@ -206,7 +164,9 @@ document.getElementById('appCategories').addEventListener('click', function(e) {
 // 安装应用
 function installApp(appId) {
     const modal = new bootstrap.Modal(document.getElementById('installModal'));
-    document.getElementById('appName').textContent = appId;
+    const appCard = document.querySelector(`[data-app-id="${appId}"]`);
+    const appName = document.querySelector(`.card[data-app-id="${appId}"] .card-title`).textContent;
+    document.getElementById('appName').textContent = appName;
     
     const confirmBtn = document.getElementById('confirmInstall');
     const agreeCheck = document.getElementById('agreeTerms');
@@ -229,13 +189,20 @@ function installApp(appId) {
         confirmBtn.disabled = true;
         
         // 发送安装请求
-        fetch(`/app-store/install/${appId}/`, {
+        fetch(`/app_store/install/${appId}/`, {
             method: 'POST',
             headers: {
-                'X-CSRFToken': getCookie('csrftoken')
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken'),
+                'X-Requested-With': 'XMLHttpRequest'
             }
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('网络响应错误');
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.success) {
                 // 模拟安装进度
@@ -253,14 +220,14 @@ function installApp(appId) {
                     }
                 }, 500);
             } else {
-                alert(data.error);
-                modal.hide();
+                throw new Error(data.error || '安装失败');
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('安装失败，请重试');
-            modal.hide();
+            alert(error.message || '安装失败，请重试');
+            confirmBtn.disabled = false;
+            progress.style.display = 'none';
         });
     };
     
@@ -297,6 +264,24 @@ function getCookie(name) {
     }
     return cookieValue;
 }
+
+// 定期检查应用状态
+function checkAppStatus() {
+    fetch('/app_store/', {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        if (response.ok && response.headers.get('content-type').includes('text/html')) {
+            location.reload();
+        }
+    })
+    .catch(console.error);
+}
+
+// 每60秒检查一次应用状态
+setInterval(checkAppStatus, 60000);
 </script>
-{% endblock %}
-{% endblock %} 
+{% endblock extra_js %}
+{% endblock content %} 

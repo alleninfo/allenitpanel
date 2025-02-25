@@ -1230,20 +1230,3 @@ def check_app_installed(app_name):
 
 
 
-
-def check_app_installed(app_name):
-    """检查应用是否实际安装在系统中"""
-    try:
-        if app_name == 'nginx':
-            result = subprocess.run(['which', 'nginx'], capture_output=True)
-            return result.returncode == 0
-        elif app_name == 'mysql':
-            result = subprocess.run(['which', 'mysql'], capture_output=True)
-            return result.returncode == 0
-        elif app_name == 'php':
-            result = subprocess.run(['which', 'php'], capture_output=True)
-            return result.returncode == 0
-        return False
-    except:
-        return False
-
