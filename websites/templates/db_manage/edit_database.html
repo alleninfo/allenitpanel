@@ -1,0 +1,162 @@
+{% extends 'base.html' %}
+
+{% block title %}编辑数据库{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 页面标题 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h4>编辑数据库 - {{ database.name }}</h4>
+                <a href="{% url 'database_manage' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>返回
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑表单 -->
+    <div class="row">
+        <div class="col-12 col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <form id="editDatabaseForm">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label class="form-label">数据库名</label>
+                            <input type="text" class="form-control" value="{{ database.name }}" readonly>
+                            <div class="form-text">数据库名称不可修改</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">字符集</label>
+                            <select class="form-select" name="charset">
+                                <option value="utf8mb4" {% if database.charset == 'utf8mb4' %}selected{% endif %}>utf8mb4</option>
+                                <option value="utf8" {% if database.charset == 'utf8' %}selected{% endif %}>utf8</option>
+                                <option value="gbk" {% if database.charset == 'gbk' %}selected{% endif %}>gbk</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">访问权限</label>
+                            <select class="form-select" name="access" id="accessSelect">
+                                <option value="localhost">本地服务器</option>
+                                <option value="remote">所有人</option>
+                                <option value="specified">指定IP</option>
+                            </select>
+                        </div>
+                        <div class="mb-3" id="specifiedIpField" style="display: none;">
+                            <label class="form-label">指定IP地址</label>
+                            <input type="text" class="form-control" name="specified_ip" placeholder="例如: 192.168.1.100">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">修改密码</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" name="new_password" id="newPassword" placeholder="留空表示不修改">
+                                <button class="btn btn-outline-secondary" type="button" onclick="generatePassword()">
+                                    生成
+                                </button>
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <button type="button" class="btn btn-primary" onclick="submitEdit()">保存更改</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- 数据库信息卡片 -->
+        <div class="col-12 col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">数据库信息</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">大小</label>
+                        <div>{{ database.size }}</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">创建时间</label>
+                        <div>{{ database.created_at|date:"Y-m-d H:i" }}</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">当前用户</label>
+                        <div>{{ database.username }}</div>
+                    </div>
+                    <div>
+                        <label class="form-label fw-bold">状态</label>
+                        <div>
+                            <span class="badge {% if database.status %}bg-success{% else %}bg-danger{% endif %}">
+                                {% if database.status %}正常{% else %}异常{% endif %}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+// 生成随机密码
+function generatePassword() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+    let password = '';
+    for (let i = 0; i < 16; i++) {
+        password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    document.getElementById('newPassword').value = password;
+}
+
+// 控制指定IP输入框的显示/隐藏
+document.getElementById('accessSelect').addEventListener('change', function() {
+    const specifiedIpField = document.getElementById('specifiedIpField');
+    specifiedIpField.style.display = this.value === 'specified' ? 'block' : 'none';
+});
+
+// 提交编辑表单
+function submitEdit() {
+    const form = document.getElementById('editDatabaseForm');
+    const formData = new FormData(form);
+
+    fetch(`/databases/{{ database.name }}/edit/`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.href = '{% url "database_manage" %}';
+        } else {
+            alert(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('保存失败，请重试');
+    });
+}
+
+// 获取CSRF Token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}
+{% endblock %} 

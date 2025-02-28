@@ -52,20 +52,19 @@
                                     <td>{{ db.created_at|date:"Y-m-d H:i" }}</td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
-                                            <button class="btn btn-outline-primary" title="管理"
-                                                onclick="manageDatabase('{{ db.id }}')">
-                                                <i class="fas fa-cog"></i>
-                                            </button>
+                                            <a href="{% url 'edit_database' db.name %}" class="btn btn-outline-primary" title="编辑">
+                                                <i class="fas fa-edit"></i>
+                                            </a>
                                             <button class="btn btn-outline-info" title="备份"
-                                                onclick="backupDatabase('{{ db.id }}')">
+                                                onclick="backupDatabase('{{ db.name }}')">
                                                 <i class="fas fa-download"></i>
                                             </button>
                                             <button class="btn btn-outline-warning" title="修改密码"
-                                                onclick="changePassword('{{ db.id }}')">
+                                                onclick="changePassword('{{ db.name }}')">
                                                 <i class="fas fa-key"></i>
                                             </button>
                                             <button class="btn btn-outline-danger" title="删除"
-                                                onclick="deleteDatabase('{{ db.id }}')">
+                                                onclick="deleteDatabase('{{ db.name }}')">
                                                 <i class="fas fa-trash"></i>
                                             </button>
                                         </div>
@@ -155,7 +154,7 @@
             <div class="modal-body">
                 <form id="changePasswordForm">
                     {% csrf_token %}
-                    <input type="hidden" name="db_id" id="changePasswordDbId">
+                    <input type="hidden" name="db_name" id="changePasswordDbName">
                     <div class="mb-3">
                         <label class="form-label">新密码</label>
                         <div class="input-group">
@@ -214,15 +213,15 @@ function submitAddDatabase() {
 }
 
 // 管理数据库
-function manageDatabase(id) {
-    window.location.href = `/databases/${id}/manage/`;
+function manageDatabase(name) {
+    window.location.href = `/databases/${name}/manage/`;
 }
 
 // 备份数据库
-function backupDatabase(id) {
+function backupDatabase(name) {
     if (!confirm('确定要备份该数据库吗？')) return;
 
-    fetch(`/databases/${id}/backup/`, {
+    fetch(`/databases/${name}/backup/`, {
         method: 'POST',
         headers: {
             'X-CSRFToken': getCookie('csrftoken')
@@ -243,8 +242,8 @@ function backupDatabase(id) {
 }
 
 // 修改密码
-function changePassword(id) {
-    document.getElementById('changePasswordDbId').value = id;
+function changePassword(name) {
+    document.getElementById('changePasswordDbName').value = name;
     new bootstrap.Modal(document.getElementById('changePasswordModal')).show();
 }
 
@@ -252,9 +251,9 @@ function changePassword(id) {
 function submitChangePassword() {
     const form = document.getElementById('changePasswordForm');
     const formData = new FormData(form);
-    const id = formData.get('db_id');
+    const name = formData.get('db_name');
 
-    fetch(`/databases/${id}/change-password/`, {
+    fetch(`/databases/${name}/change-password/`, {
         method: 'POST',
         body: formData,
         headers: {
@@ -276,10 +275,10 @@ function submitChangePassword() {
 }
 
 // 删除数据库
-function deleteDatabase(id) {
+function deleteDatabase(name) {
     if (!confirm('确定要删除该数据库吗？此操作不可恢复！')) return;
 
-    fetch(`/databases/${id}/delete/`, {
+    fetch(`/databases/${name}/delete/`, {
         method: 'POST',
         headers: {
             'X-CSRFToken': getCookie('csrftoken')

@@ -14,10 +14,11 @@ urlpatterns = [
     path('website_manage/<int:id>/files/', views.website_files, name='website_files'),
     path('database_manage/', views.database_manage, name='database_manage'),
     path('databases/add/', views.add_database, name='add_database'),
-    path('databases/<int:id>/manage/', views.manage_database, name='manage_database'),
-    path('databases/<int:id>/backup/', views.backup_database, name='backup_database'),
-    path('databases/<int:id>/change-password/', views.change_database_password, name='change_database_password'),
-    path('databases/<int:id>/delete/', views.delete_database, name='delete_database'),
+    path('databases/<str:id>/manage/', views.manage_database, name='manage_database'),
+    path('databases/<str:id>/backup/', views.backup_database, name='backup_database'),
+    path('databases/<str:id>/change-password/', views.change_database_password, name='change_database_password'),
+    path('databases/<str:id>/delete/', views.delete_database, name='delete_database'),
+    path('databases/<str:name>/edit/', views.edit_database, name='edit_database'),
 
     path('login/', views.login, name='login'),
     path('logout/', views.logout, name='logout'),
@@ -25,10 +26,7 @@ urlpatterns = [
     path('file_manage/', views.file_manage, name='file_manage'),
     
     path('terminal_manage/', views.terminal_manage, name='terminal_manage'),
-    path('terminal/create/', views.create_terminal, name='create_terminal'),
-    path('terminal/close/', views.close_terminal, name='close_terminal'),
-    path('terminal/logs/', views.terminal_logs, name='terminal_logs'),
-    path('terminal/status/', views.terminal_status, name='terminal_status'),
+    
     path('cron_manage/', views.cron_manage, name='cron_manage'),
     path('app_store/', views.app_store, name='app_store'),
     path('app_store/install/<int:app_id>/', views.install_app, name='install_app'),

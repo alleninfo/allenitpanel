@@ -262,20 +262,23 @@
                                     <!-- Nginx -->
                                     <div class="d-flex justify-content-between align-items-center mb-3">
                                         <div class="d-flex align-items-center">
-                                            <i class="fas fa-server text-primary me-2"></i>
+                                            <i class="fas fa-server text-primary me-2" aria-label="Nginx服务器"></i>
                                             <span>Nginx</span>
                                         </div>
                                         <div class="d-flex align-items-center">
-                                            <span class="badge me-2" id="nginx-status">检测中...</span>
-                                            <div class="btn-group btn-group-sm">
-                                                <button class="btn btn-outline-primary btn-sm" onclick="controlService('nginx', 'reload')">
-                                                    <i class="fas fa-sync-alt"></i>
+                                            <span class="badge me-2" id="nginx-status" role="status">检测中...</span>
+                                            <div class="btn-group btn-group-sm" role="group" aria-label="Nginx服务控制">
+                                                <button class="btn btn-outline-primary btn-sm" onclick="controlService('nginx', 'reload')" title="重载Nginx">
+                                                    <i class="fas fa-sync-alt" aria-hidden="true"></i>
+                                                    <span class="visually-hidden">重载</span>
                                                 </button>
-                                                <button class="btn btn-outline-warning btn-sm" onclick="controlService('nginx', 'restart')">
-                                                    <i class="fas fa-redo"></i>
+                                                <button class="btn btn-outline-warning btn-sm" onclick="controlService('nginx', 'restart')" title="重启Nginx">
+                                                    <i class="fas fa-redo" aria-hidden="true"></i>
+                                                    <span class="visually-hidden">重启</span>
                                                 </button>
-                                                <button class="btn btn-outline-danger btn-sm" onclick="controlService('nginx', 'stop')">
-                                                    <i class="fas fa-stop"></i>
+                                                <button class="btn btn-outline-danger btn-sm" onclick="controlService('nginx', 'stop')" title="停止Nginx">
+                                                    <i class="fas fa-stop" aria-hidden="true"></i>
+                                                    <span class="visually-hidden">停止</span>
                                                 </button>
                                             </div>
                                         </div>
@@ -283,17 +286,19 @@
                                     <!-- MySQL -->
                                     <div class="d-flex justify-content-between align-items-center mb-3">
                                         <div class="d-flex align-items-center">
-                                            <i class="fas fa-database text-info me-2"></i>
+                                            <i class="fas fa-database text-info me-2" aria-label="MySQL数据库"></i>
                                             <span>MySQL</span>
                                         </div>
                                         <div class="d-flex align-items-center">
-                                            <span class="badge me-2" id="mysql-status">检测中...</span>
-                                            <div class="btn-group btn-group-sm">
-                                                <button class="btn btn-outline-warning btn-sm" onclick="controlService('mysql', 'restart')">
-                                                    <i class="fas fa-redo"></i>
+                                            <span class="badge me-2" id="mysql-status" role="status">检测中...</span>
+                                            <div class="btn-group btn-group-sm" role="group" aria-label="MySQL服务控制">
+                                                <button class="btn btn-outline-warning btn-sm" onclick="controlService('mysql', 'restart')" title="重启MySQL">
+                                                    <i class="fas fa-redo" aria-hidden="true"></i>
+                                                    <span class="visually-hidden">重启</span>
                                                 </button>
-                                                <button class="btn btn-outline-danger btn-sm" onclick="controlService('mysql', 'stop')">
-                                                    <i class="fas fa-stop"></i>
+                                                <button class="btn btn-outline-danger btn-sm" onclick="controlService('mysql', 'stop')" title="停止MySQL">
+                                                    <i class="fas fa-stop" aria-hidden="true"></i>
+                                                    <span class="visually-hidden">停止</span>
                                                 </button>
                                             </div>
                                         </div>
@@ -301,17 +306,19 @@
                                     <!-- PHP -->
                                     <div class="d-flex justify-content-between align-items-center">
                                         <div class="d-flex align-items-center">
-                                            <i class="fab fa-php text-primary me-2"></i>
+                                            <i class="fab fa-php text-primary me-2" aria-label="PHP服务"></i>
                                             <span>PHP</span>
                                         </div>
                                         <div class="d-flex align-items-center">
-                                            <span class="badge me-2" id="php-status">检测中...</span>
-                                            <div class="btn-group btn-group-sm">
-                                                <button class="btn btn-outline-warning btn-sm" onclick="controlService('php', 'restart')">
-                                                    <i class="fas fa-redo"></i>
+                                            <span class="badge me-2" id="php-status" role="status">检测中...</span>
+                                            <div class="btn-group btn-group-sm" role="group" aria-label="PHP服务控制">
+                                                <button class="btn btn-outline-warning btn-sm" onclick="controlService('php', 'restart')" title="重启PHP">
+                                                    <i class="fas fa-redo" aria-hidden="true"></i>
+                                                    <span class="visually-hidden">重启</span>
                                                 </button>
-                                                <button class="btn btn-outline-danger btn-sm" onclick="controlService('php', 'stop')">
-                                                    <i class="fas fa-stop"></i>
+                                                <button class="btn btn-outline-danger btn-sm" onclick="controlService('php', 'stop')" title="停止PHP">
+                                                    <i class="fas fa-stop" aria-hidden="true"></i>
+                                                    <span class="visually-hidden">停止</span>
                                                 </button>
                                             </div>
                                         </div>

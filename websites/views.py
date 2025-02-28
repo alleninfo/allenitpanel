@@ -2,7 +2,6 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-
 from django.http import JsonResponse, FileResponse
 from django.views.decorators.http import require_http_methods
 import subprocess
@@ -20,6 +19,7 @@ import pwd
 import grp
 import shutil
 import uuid
+import mysql.connector
 
 # Create your views here.
 
@@ -242,9 +242,9 @@ def control_service(request, service, action):
             else:
                 subprocess.run(['sudo', 'systemctl', action, 'nginx'], check=True)
         elif service == 'mysql':
-            subprocess.run(['sudo', 'systemctl', action, 'mysql'], check=True)
+            subprocess.run(['sudo', 'systemctl', action, 'mysqld'], check=True)
         elif service == 'php':
-            subprocess.run(['sudo', 'systemctl', action, 'php7.4-fpm'], check=True)
+            subprocess.run(['sudo', 'systemctl', action, 'php-fpm'], check=True)
 
         return JsonResponse({'success': True})
     except subprocess.CalledProcessError as e:
@@ -252,9 +252,109 @@ def control_service(request, service, action):
 
 @login_required
 def database_manage(request):
-    if not request.user.is_authenticated:
-        return redirect('login')
-    return render(request, 'db_manage/database_manage.html')
+    """数据库管理页面"""
+    try:
+        print("尝试连接 MySQL...")
+        # 创建MySQL连接
+        mysql_conn = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="oakcdrom",
+            allow_local_infile=True,
+            auth_plugin='mysql_native_password'
+        )
+        print("MySQL 连接成功")
+        
+        try:
+            with mysql_conn.cursor(dictionary=True) as cursor:  # 使用 dictionary=True 获取字典格式的结果
+                print("执行数据库查询...")
+                # 获取所有数据库
+                cursor.execute("""
+                    SELECT 
+                        SCHEMA_NAME as name,
+                        DEFAULT_CHARACTER_SET_NAME as charset,
+                        NOW() as created_at
+                    FROM information_schema.SCHEMATA 
+                    WHERE SCHEMA_NAME NOT IN 
+                        ('information_schema', 'mysql', 'performance_schema', 'sys')
+                """)
+                databases = []
+                db_rows = cursor.fetchall()
+                print(f"找到 {len(db_rows)} 个数据库")
+                
+                for row in db_rows:
+                    db_name = row['name']
+                    print(f"处理数据库: {db_name}")
+                    db_info = {
+                        'id': db_name,
+                        'name': db_name,
+                        'charset': row['charset'],
+                        'created_at': row['created_at'],
+                        'status': True,
+                        'size': '0 MB',
+                        'username': ''
+                    }
+                    
+                    try:
+                        # 获取数据库大小
+                        cursor.execute("""
+                            SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) as size
+                            FROM information_schema.tables
+                            WHERE table_schema = %s
+                            GROUP BY table_schema
+                        """, (db_name,))
+                        size_result = cursor.fetchone()
+                        if size_result and size_result['size']:
+                            db_info['size'] = f"{size_result['size']} MB"
+                    except Exception as e:
+                        print(f"获取数据库 {db_name} 大小时出错: {str(e)}")
+                    
+                    try:
+                        # 获取数据库用户
+                        cursor.execute("""
+                            SELECT DISTINCT User 
+                            FROM mysql.db 
+                            WHERE Db = %s
+                        """, (db_name,))
+                        users = cursor.fetchall()
+                        if users:
+                            db_info['username'] = ', '.join(user['User'] for user in users)
+                        else:
+                            # 如果在 mysql.db 中没找到，尝试查找全局权限
+                            cursor.execute("""
+                                SELECT DISTINCT User 
+                                FROM mysql.user 
+                                WHERE Grant_priv = 'Y' 
+                                AND User NOT IN ('root', 'mysql.sys', 'mysql.session', 'mysql.infoschema')
+                            """)
+                            global_users = cursor.fetchall()
+                            db_info['username'] = ', '.join(user['User'] for user in global_users) if global_users else '无'
+                    except Exception as e:
+                        print(f"获取数据库 {db_name} 用户信息时出错: {str(e)}")
+                        db_info['username'] = '获取失败'
+                    
+                    databases.append(db_info)
+                    print(f"已添加数据库信息: {db_info}")
+
+                print(f"成功获取到 {len(databases)} 个数据库的信息")
+                return render(request, 'db_manage/database_manage.html', {
+                    'databases': databases
+                })
+                
+        except Exception as e:
+            print(f"查询数据库信息时出错: {str(e)}")
+            raise
+        finally:
+            mysql_conn.close()
+            print("MySQL 连接已关闭")
+            
+    except Exception as e:
+        error_msg = f"获取数据库列表失败：{str(e)}"
+        print(error_msg)
+        messages.error(request, error_msg)
+        return render(request, 'db_manage/database_manage.html', {
+            'databases': []
+        })
 
 
 @login_required
@@ -680,7 +780,7 @@ def apply_ssl(request):
                         })
 
             # 确保网站根目录存在
-            web_root = f'/var/www/{domain}'
+            web_root = f'/www/wwwroot/{domain}'
             if not os.path.exists(web_root):
                 os.makedirs(web_root, exist_ok=True)
 
@@ -763,7 +863,7 @@ server {{
     # HSTS配置
     add_header Strict-Transport-Security "max-age=63072000" always;
     
-    root /var/www/{domain};
+    root /www/wwwroot/{domain};
     index index.html index.htm index.php;
     
     location / {{
@@ -771,7 +871,7 @@ server {{
     }}
     
     location ~ \.php$ {{
-        fastcgi_pass unix:/var/run/php/php-fpm.sock;
+        fastcgi_pass unix:/var/run/php-fpm/www.sock;
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         include fastcgi_params;
@@ -876,7 +976,7 @@ server {{
     # HSTS配置
     add_header Strict-Transport-Security "max-age=63072000" always;
     
-    root /var/www/{domain};
+    root /www/wwwroot/{domain};
     index index.html index.htm index.php;
     
     location / {{
@@ -884,7 +984,7 @@ server {{
     }}
     
     location ~ \.php$ {{
-        fastcgi_pass unix:/var/run/php/php-fpm.sock;
+        fastcgi_pass unix:/var/run/php-fpm/www.sock;
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         include fastcgi_params;
@@ -1133,117 +1233,6 @@ def batch_delete(request):
             return JsonResponse({'status': 'error', 'message': str(e)})
     return JsonResponse({'status': 'error', 'message': '不支持的请求方法'})
 
-@login_required
-@csrf_exempt
-def create_terminal(request):
-    """创建新终端"""
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            title = data.get('title')
-            session_id = str(uuid.uuid4())
-            
-            session = TerminalSession.objects.create(
-                user=request.user,
-                session_id=session_id,
-                title=title
-            )
-            
-            return JsonResponse({
-                'status': 'success',
-                'session_id': session_id
-            })
-        except Exception as e:
-            return JsonResponse({
-                'status': 'error',
-                'message': str(e)
-            })
-    
-    return JsonResponse({
-        'status': 'error',
-        'message': '不支持的请求方法'
-    })
-
-@login_required
-@csrf_exempt
-def close_terminal(request):
-    """关闭终端"""
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            session_id = data.get('session_id')
-            
-            session = TerminalSession.objects.get(
-                session_id=session_id,
-                user=request.user
-            )
-            
-            if session.pid:
-                try:
-                    import os
-                    os.kill(session.pid, 9)
-                except OSError:
-                    pass
-            
-            session.status = 'closed'
-            session.save()
-            
-            return JsonResponse({'status': 'success'})
-        except Exception as e:
-            return JsonResponse({
-                'status': 'error',
-                'message': str(e)
-            })
-    
-    return JsonResponse({
-        'status': 'error',
-        'message': '不支持的请求方法'
-    })
-
-@login_required
-def terminal_logs(request):
-    """获取终端日志"""
-    try:
-        session_id = request.GET.get('session_id')
-        session = TerminalSession.objects.get(
-            session_id=session_id,
-            user=request.user
-        )
-        
-        # 这里需要实现日志获取逻辑
-        logs = "终端日志示例\n"  # 替换为实际的日志内容
-        
-        return JsonResponse({
-            'status': 'success',
-            'logs': logs
-        })
-    except Exception as e:
-        return JsonResponse({
-            'status': 'error',
-            'message': str(e)
-        })
-
-@login_required
-def terminal_status(request):
-    """获取终端状态"""
-    try:
-        sessions = TerminalSession.objects.filter(user=request.user)
-        status_data = [{
-            'session_id': session.session_id,
-            'title': session.title,
-            'status': session.status
-        } for session in sessions]
-        
-        return JsonResponse({
-            'status': 'success',
-            'sessions': status_data
-        })
-    except Exception as e:
-        return JsonResponse({
-            'status': 'error',
-            'message': str(e)
-        })
-
 
 
 def check_app_installed(app_name):
@@ -1410,27 +1399,65 @@ def add_database(request):
                 'error': '请填写所有必填字段'
             })
             
-        # 创建数据库和用户
-        with connection.cursor() as cursor:
-            # 创建数据库
-            cursor.execute("CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET %s", [name, charset])
-            
-            # 根据访问权限设置host
-            host = '%' if access == 'remote' else 'localhost'
-            if access == 'specified':
-                host = request.POST.get('specified_ip', 'localhost')
-            
-            # 创建用户并设置密码 (MySQL 8.0 语法)
-            cursor.execute("CREATE USER IF NOT EXISTS `%s`@`%s` IDENTIFIED WITH mysql_native_password BY %s", [username, host, password])
-            
-            # 授予权限 (MySQL 8.0 语法)
-            cursor.execute("GRANT ALL PRIVILEGES ON `%s`.* TO `%s`@`%s`", [name, username, host])
-            cursor.execute("FLUSH PRIVILEGES")
+        # 根据访问权限设置host
+        host = '%' if access == 'remote' else 'localhost'
+        if access == 'specified':
+            host = request.POST.get('specified_ip', 'localhost')
         
-        return JsonResponse({
-            'success': True
-        })
+        # 创建MySQL连接
+        mysql_conn = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="oakcdrom",
+            
+        )
+        
+        try:
+            with mysql_conn.cursor() as cursor:
+                # 先尝试删除已存在的用户和数据库
+                try:
+                    cursor.execute(f"DROP USER IF EXISTS '{username}'@'{host}'")
+                    cursor.execute(f"DROP DATABASE IF EXISTS `{name}`")
+                    mysql_conn.commit()
+                except Exception as e:
+                    print(f"清理旧数据时出错: {str(e)}")
+                
+                # 创建数据库
+                cursor.execute(f"CREATE DATABASE `{name}` CHARACTER SET {charset}")
+                
+                # 创建用户并授权
+                cursor.execute(f"CREATE USER '{username}'@'{host}' IDENTIFIED BY '{password}'")
+                cursor.execute(f"GRANT ALL PRIVILEGES ON `{name}`.* TO '{username}'@'{host}'")
+                cursor.execute("FLUSH PRIVILEGES")
+                
+                mysql_conn.commit()
+                
+                # 记录活动
+                log_activity(request, 'database', f'创建数据库 {name}')
+                
+                return JsonResponse({
+                    'success': True
+                })
+                
+        except mysql.connector.Error as e:
+            print(f"MySQL Error: {str(e)}")
+            # 如果出错，尝试清理
+            try:
+                cursor.execute(f"DROP DATABASE IF EXISTS `{name}`")
+                cursor.execute(f"DROP USER IF EXISTS '{username}'@'{host}'")
+                cursor.execute("FLUSH PRIVILEGES")
+                mysql_conn.commit()
+            except:
+                pass
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            })
+        finally:
+            mysql_conn.close()
+                
     except Exception as e:
+        print(f"Error: {str(e)}")
         return JsonResponse({
             'success': False,
             'error': str(e)
@@ -1440,25 +1467,38 @@ def add_database(request):
 def manage_database(request, id):
     """管理数据库"""
     try:
-        # 获取数据库信息
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = %s", [id])
-            db_info = cursor.fetchone()
-            
-        if not db_info:
+        # 创建 MySQL 连接
+        mysql_conn = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="oakcdrom",
+            allow_local_infile=True,
+            auth_plugin='mysql_native_password'
+        )
+        
+        try:
+            with mysql_conn.cursor(dictionary=True) as cursor:
+                # 获取数据库信息
+                cursor.execute("SELECT * FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = %s", [id])
+                db_info = cursor.fetchone()
+                
+            if not db_info:
+                return JsonResponse({
+                    'success': False,
+                    'error': '数据库不存在'
+                })
+                
             return JsonResponse({
-                'success': False,
-                'error': '数据库不存在'
+                'success': True,
+                'database': {
+                    'name': db_info['SCHEMA_NAME'],
+                    'charset': db_info['DEFAULT_CHARACTER_SET_NAME'],
+                    'collation': db_info['DEFAULT_COLLATION_NAME']
+                }
             })
+        finally:
+            mysql_conn.close()
             
-        return JsonResponse({
-            'success': True,
-            'database': {
-                'name': db_info[1],
-                'charset': db_info[2],
-                'collation': db_info[3]
-            }
-        })
     except Exception as e:
         return JsonResponse({
             'success': False,
@@ -1741,6 +1781,110 @@ def control_service(request, service_name, action):
             return JsonResponse({'success': False, 'error': result.stderr})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
+
+@login_required
+def edit_database(request, name):
+    """编辑数据库"""
+    try:
+        # 创建MySQL连接
+        mysql_conn = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="oakcdrom",
+            allow_local_infile=True,
+            auth_plugin='mysql_native_password'
+        )
+        
+        try:
+            with mysql_conn.cursor(dictionary=True) as cursor:
+                if request.method == 'POST':
+                    # 获取表单数据
+                    charset = request.POST.get('charset')
+                    access = request.POST.get('access')
+                    new_password = request.POST.get('new_password')
+                    specified_ip = request.POST.get('specified_ip')
+                    
+                    # 设置host
+                    host = '%' if access == 'remote' else 'localhost'
+                    if access == 'specified' and specified_ip:
+                        host = specified_ip
+                    
+                    # 修改数据库字符集
+                    cursor.execute(f"ALTER DATABASE `{name}` CHARACTER SET = {charset}")
+                    
+                    # 如果提供了新密码，修改用户密码
+                    if new_password:
+                        # 获取数据库用户
+                        cursor.execute("""
+                            SELECT DISTINCT User, Host 
+                            FROM mysql.db 
+                            WHERE Db = %s
+                        """, (name,))
+                        users = cursor.fetchall()
+                        
+                        for user in users:
+                            # 修改用户密码和host
+                            cursor.execute(f"ALTER USER '{user['User']}'@'{user['Host']}' IDENTIFIED BY %s", (new_password,))
+                            if user['Host'] != host:
+                                # 创建新的用户权限
+                                cursor.execute(f"GRANT ALL PRIVILEGES ON `{name}`.* TO '{user['User']}'@'{host}' IDENTIFIED BY %s", (new_password,))
+                                # 删除旧的用户
+                                cursor.execute(f"DROP USER '{user['User']}'@'{user['Host']}'")
+                    
+                    mysql_conn.commit()
+                    return JsonResponse({'success': True})
+                else:
+                    # GET请求，获取数据库信息
+                    cursor.execute("""
+                        SELECT 
+                            SCHEMA_NAME as name,
+                            DEFAULT_CHARACTER_SET_NAME as charset,
+                            NOW() as created_at
+                        FROM information_schema.SCHEMATA 
+                        WHERE SCHEMA_NAME = %s
+                    """, (name,))
+                    database = cursor.fetchone()
+                    
+                    if not database:
+                        messages.error(request, '数据库不存在')
+                        return redirect('database_manage')
+                    
+                    # 获取数据库大小
+                    cursor.execute("""
+                        SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) as size
+                        FROM information_schema.tables
+                        WHERE table_schema = %s
+                        GROUP BY table_schema
+                    """, (name,))
+                    size_result = cursor.fetchone()
+                    database['size'] = f"{size_result['size'] if size_result else 0} MB"
+                    
+                    # 获取数据库用户
+                    cursor.execute("""
+                        SELECT DISTINCT User 
+                        FROM mysql.db 
+                        WHERE Db = %s
+                    """, (name,))
+                    users = cursor.fetchall()
+                    database['username'] = ', '.join(user['User'] for user in users) if users else '无'
+                    
+                    # 检查数据库状态
+                    database['status'] = True
+                    
+                    return render(request, 'db_manage/edit_database.html', {
+                        'database': database
+                    })
+        finally:
+            mysql_conn.close()
+            
+    except Exception as e:
+        if request.method == 'POST':
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            })
+        messages.error(request, f'获取数据库信息失败：{str(e)}')
+        return redirect('database_manage')
 
 
 
