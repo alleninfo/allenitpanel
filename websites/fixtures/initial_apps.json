@@ -9,7 +9,7 @@
             "version": "1.18",
             "icon_class": "fas fa-server",
             "is_installed": false,
-            "install_command": "if command -v apt-get >/dev/null 2>&1; then\n    apt-get update && apt-get install -y nginx\nelif command -v dnf >/dev/null 2>&1; then\n    dnf install -y nginx\nelif command -v yum >/dev/null 2>&1; then\n    yum install -y epel-release && yum install -y nginx\nfi",
+            "install_command": "if command -v apt >/dev/null 2>&1; then apt update && apt install -y nginx && systemctl enable nginx && systemctl start nginx; elif command -v dnf >/dev/null 2>&1; then dnf install -y nginx && systemctl enable nginx && systemctl start nginx; elif command -v yum >/dev/null 2>&1; then yum install -y nginx && systemctl enable nginx && systemctl start nginx; fi",
             "created_at": "2024-02-22T00:00:00Z",
             "updated_at": "2024-02-22T00:00:00Z"
         }
@@ -24,7 +24,7 @@
             "version": "8.0",
             "icon_class": "fas fa-database",
             "is_installed": false,
-            "install_command": "if command -v apt-get >/dev/null 2>&1; then\n    apt-get update && apt-get install -y mysql-server\nelif command -v dnf >/dev/null 2>&1; then\n    dnf install -y mysql-server\nelif command -v yum >/dev/null 2>&1; then\n    yum install -y mysql-server\nfi",
+            "install_command": "if command -v apt >/dev/null 2>&1; then apt update && apt install -y mysql-server && systemctl enable mysql && systemctl start mysql; elif command -v dnf >/dev/null 2>&1; then if grep -q 'CentOS Linux 8' /etc/os-release; then dnf install -y mysql-server && (systemctl status mysqld > /dev/null 2>&1 || mysqld --initialize-insecure) && systemctl enable mysqld && systemctl start mysqld; else dnf config-manager --set-enabled crb && dnf install -y mysql-server && (systemctl status mysqld > /dev/null 2>&1 || mysqld --initialize-insecure) && systemctl enable mysqld && systemctl start mysqld; fi; elif command -v yum >/dev/null 2>&1; then yum install -y mysql-server && (systemctl status mysqld > /dev/null 2>&1 || mysqld --initialize-insecure) && systemctl enable mysqld && systemctl start mysqld; fi",
             "created_at": "2024-02-22T00:00:00Z",
             "updated_at": "2024-02-22T00:00:00Z"
         }
@@ -33,13 +33,13 @@
         "model": "websites.appstore",
         "pk": 3,
         "fields": {
-            "name": "Redis",
-            "category": "cache",
-            "description": "高性能的内存数据库和缓存服务",
-            "version": "6.0",
-            "icon_class": "fas fa-memory",
+            "name": "PHP",
+            "category": "language",
+            "description": "流行的服务器端脚本语言",
+            "version": "8.0",
+            "icon_class": "fab fa-php",
             "is_installed": false,
-            "install_command": "if command -v apt-get >/dev/null 2>&1; then\n    apt-get update && apt-get install -y redis-server\nelif command -v dnf >/dev/null 2>&1; then\n    dnf install -y redis\nelif command -v yum >/dev/null 2>&1; then\n    yum install -y epel-release && yum install -y redis\nfi",
+            "install_command": "if command -v apt >/dev/null 2>&1; then apt update && apt install -y php8.1-fpm php8.1-cli php8.1-mysql php8.1-curl php8.1-gd php8.1-mbstring php8.1-xml php8.1-zip && systemctl enable php8.1-fpm && systemctl start php8.1-fpm; elif command -v dnf >/dev/null 2>&1; then if grep -q 'CentOS Linux 8' /etc/os-release; then dnf install -y php php-fpm php-mysqlnd php-curl php-gd php-mbstring php-xml php-zip && systemctl enable php-fpm && systemctl start php-fpm; elif grep -q 'CentOS Linux 9' /etc/os-release; then dnf install -y php php-fpm php-mysqlnd php-curl php-gd php-mbstring php-xml php-zip && systemctl enable php-fpm && systemctl start php-fpm; else dnf install -y php php-fpm php-mysqlnd php-curl php-gd php-mbstring php-xml php-zip && systemctl enable php-fpm && systemctl start php-fpm; fi; elif command -v yum >/dev/null 2>&1; then yum install -y php php-fpm php-mysqlnd php-curl php-gd php-mbstring php-xml php-zip && systemctl enable php-fpm && systemctl start php-fpm; fi",
             "created_at": "2024-02-22T00:00:00Z",
             "updated_at": "2024-02-22T00:00:00Z"
         }
@@ -48,103 +48,13 @@
         "model": "websites.appstore",
         "pk": 4,
         "fields": {
-            "name": "PHP",
-            "category": "language",
-            "description": "流行的服务器端脚本语言",
-            "version": "7.4",
-            "icon_class": "fab fa-php",
+            "name": "Redis",
+            "category": "cache",
+            "description": "高性能的内存数据库和缓存服务",
+            "version": "6.0",
+            "icon_class": "fas fa-memory",
             "is_installed": false,
-            "install_command": "if command -v apt-get >/dev/null 2>&1; then\n    apt-get update && apt-get install -y php7.4-fpm php7.4-mysql php7.4-curl php7.4-gd php7.4-mbstring php7.4-xml php7.4-zip\nelif command -v dnf >/dev/null 2>&1; then\n    dnf install -y php-fpm php-mysqlnd php-curl php-gd php-mbstring php-xml php-zip\nelif command -v yum >/dev/null 2>&1; then\n    yum install -y epel-release && yum install -y php-fpm php-mysqlnd php-curl php-gd php-mbstring php-xml php-zip\nfi",
-            "created_at": "2024-02-22T00:00:00Z",
-            "updated_at": "2024-02-22T00:00:00Z"
-        }
-    },
-    {
-        "model": "websites.appstore",
-        "pk": 5,
-        "fields": {
-            "name": "phpMyAdmin",
-            "category": "tools",
-            "description": "MySQL数据库管理工具",
-            "version": "5.2",
-            "icon_class": "fas fa-database",
-            "is_installed": false,
-            "install_command": "if command -v apt-get >/dev/null 2>&1; then\n    apt-get update && apt-get install -y phpmyadmin\nelif command -v dnf >/dev/null 2>&1; then\n    dnf install -y phpMyAdmin\nelif command -v yum >/dev/null 2>&1; then\n    yum install -y epel-release && yum install -y phpMyAdmin\nfi",
-            "created_at": "2024-02-22T00:00:00Z",
-            "updated_at": "2024-02-22T00:00:00Z"
-        }
-    },
-    {
-        "model": "websites.appstore",
-        "pk": 6,
-        "fields": {
-            "name": "Node.js",
-            "category": "language",
-            "description": "JavaScript运行时环境",
-            "version": "18.x",
-            "icon_class": "fab fa-node-js",
-            "is_installed": false,
-            "install_command": "if command -v apt-get >/dev/null 2>&1; then\n    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && apt-get install -y nodejs\nelif command -v dnf >/dev/null 2>&1; then\n    dnf module enable nodejs:18 && dnf install -y nodejs\nelif command -v yum >/dev/null 2>&1; then\n    curl -fsSL https://rpm.nodesource.com/setup_18.x | bash - && yum install -y nodejs\nfi",
-            "created_at": "2024-02-22T00:00:00Z",
-            "updated_at": "2024-02-22T00:00:00Z"
-        }
-    },
-    {
-        "model": "websites.appstore",
-        "pk": 7,
-        "fields": {
-            "name": "Python3",
-            "category": "language",
-            "description": "Python编程语言",
-            "version": "3.x",
-            "icon_class": "fab fa-python",
-            "is_installed": false,
-            "install_command": "if command -v apt-get >/dev/null 2>&1; then\n    apt-get update && apt-get install -y python3 python3-pip\nelif command -v dnf >/dev/null 2>&1; then\n    dnf install -y python3 python3-pip\nelif command -v yum >/dev/null 2>&1; then\n    yum install -y python3 python3-pip\nfi",
-            "created_at": "2024-02-22T00:00:00Z",
-            "updated_at": "2024-02-22T00:00:00Z"
-        }
-    },
-    {
-        "model": "websites.appstore",
-        "pk": 8,
-        "fields": {
-            "name": "Git",
-            "category": "tools",
-            "description": "分布式版本控制系统",
-            "version": "latest",
-            "icon_class": "fab fa-git-alt",
-            "is_installed": false,
-            "install_command": "if command -v apt-get >/dev/null 2>&1; then\n    apt-get update && apt-get install -y git\nelif command -v dnf >/dev/null 2>&1; then\n    dnf install -y git\nelif command -v yum >/dev/null 2>&1; then\n    yum install -y git\nfi",
-            "created_at": "2024-02-22T00:00:00Z",
-            "updated_at": "2024-02-22T00:00:00Z"
-        }
-    },
-    {
-        "model": "websites.appstore",
-        "pk": 9,
-        "fields": {
-            "name": "Docker",
-            "category": "tools",
-            "description": "容器化平台",
-            "version": "latest",
-            "icon_class": "fab fa-docker",
-            "is_installed": false,
-            "install_command": "if command -v apt-get >/dev/null 2>&1; then\n    apt-get update && apt-get install -y docker.io\nelif command -v dnf >/dev/null 2>&1; then\n    dnf config-manager --add-repo=https://download.docker.com/linux/centos/docker-ce.repo && dnf install -y docker-ce docker-ce-cli containerd.io\nelif command -v yum >/dev/null 2>&1; then\n    yum install -y yum-utils && yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo && yum install -y docker-ce docker-ce-cli containerd.io\nfi",
-            "created_at": "2024-02-22T00:00:00Z",
-            "updated_at": "2024-02-22T00:00:00Z"
-        }
-    },
-    {
-        "model": "websites.appstore",
-        "pk": 10,
-        "fields": {
-            "name": "PostgreSQL",
-            "category": "database",
-            "description": "高级开源关系型数据库",
-            "version": "latest",
-            "icon_class": "fas fa-database",
-            "is_installed": false,
-            "install_command": "if command -v apt-get >/dev/null 2>&1; then\n    apt-get update && apt-get install -y postgresql postgresql-contrib\nelif command -v dnf >/dev/null 2>&1; then\n    dnf install -y postgresql-server postgresql-contrib && postgresql-setup --initdb\nelif command -v yum >/dev/null 2>&1; then\n    yum install -y postgresql-server postgresql-contrib && postgresql-setup --initdb\nfi",
+            "install_command": "if command -v apt >/dev/null 2>&1; then apt update && apt install -y redis-server && systemctl enable redis-server && systemctl start redis-server; elif command -v dnf >/dev/null 2>&1; then dnf install -y redis && systemctl enable redis && systemctl start redis; elif command -v yum >/dev/null 2>&1; then yum install -y redis && systemctl enable redis && systemctl start redis; fi",
             "created_at": "2024-02-22T00:00:00Z",
             "updated_at": "2024-02-22T00:00:00Z"
         }

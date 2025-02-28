@@ -1179,23 +1179,40 @@ def check_app_installed(app_name):
             return False
             
         elif app_name.lower() == 'php':
-            # 检查 PHP 命令
-            which_result = subprocess.run(['which', 'php'], capture_output=True)
-            if which_result.returncode != 0:
+            try:
+                # 检查 PHP 命令
+                which_php = subprocess.run(['which', 'php'], capture_output=True)
+                if which_php.returncode != 0:
+                    return False
+                
+                # 检查可能的PHP-FPM服务名称
+                php_fpm_services = ['php-fpm', 'php7.4-fpm', 'php8.0-fpm', 'php8.1-fpm', 'php8.2-fpm', 'php74-php-fpm']
+                service_active = False
+                
+                for service in php_fpm_services:
+                    status_result = subprocess.run(['systemctl', 'is-active', service], capture_output=True, text=True)
+                    if status_result.stdout.strip() == 'active':
+                        service_active = True
+                        break
+                
+                # 检查 PHP-FPM 进程
+                ps_result = subprocess.run(['pgrep', '-f', 'php-fpm'], capture_output=True)
+                process_running = ps_result.returncode == 0
+                
+                # 如果服务正在运行或进程存在，返回True
+                if service_active or process_running:
+                    return True
+                
+                # 如果找到php命令，尝试获取PHP版本
+                version_result = subprocess.run(['php', '-v'], capture_output=True, text=True)
+                if version_result.returncode == 0:
+                    return True
+                
                 return False
-            # 检查 PHP 版本
-            version_result = subprocess.run(['php', '-v'], capture_output=True)
-            if version_result.returncode != 0:
+                
+            except Exception as e:
+                print(f"检查PHP状态时出错: {str(e)}")
                 return False
-            # 检查 PHP-FPM 服务
-            php_services = ['php-fpm', 'php7.4-fpm', 'php8.0-fpm', 'php8.1-fpm', 'php8.2-fpm']
-            for service in php_services:
-                status_result = subprocess.run(['systemctl', 'is-active', service], capture_output=True, text=True)
-                if status_result.stdout.strip() == 'active':
-                    # 检查进程
-                    ps_result = subprocess.run(['pgrep', 'php-fpm'], capture_output=True)
-                    return ps_result.returncode == 0
-            return False
             
         elif app_name.lower() == 'redis':
             # 检查 Redis 命令行工具

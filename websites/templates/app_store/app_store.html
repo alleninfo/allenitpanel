@@ -3,6 +3,7 @@
 {% block title %}应用商店{% endblock %}
 
 {% block content %}
+{% csrf_token %}
 <style>
 /* 自定义导航栏样式 */
 .nav-pills .nav-link {
@@ -62,7 +63,9 @@
             <div class="card h-100" data-app-id="{{ app.id }}">
                 <div class="card-body">
                     <div class="d-flex align-items-center mb-3">
-                        <i class="{{ app.icon_class }} fa-2x text-primary me-3"></i>
+                        <div class="icon-wrapper text-primary me-3" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                            <i class="{{ app.icon_class }} fa-2x"></i>
+                        </div>
                         <div>
                             <h5 class="card-title mb-0">{{ app.name }}</h5>
                             <small class="text-muted">{{ app.get_category_display }}</small>
@@ -93,7 +96,7 @@
 
 <!-- 安装确认模态框 -->
 <div class="modal fade" id="installModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">安装确认</h5>
@@ -107,8 +110,12 @@
                         我已阅读并同意安装协议
                     </label>
                 </div>
-                <div class="progress" style="display: none;">
+                <div class="progress mb-3" style="display: none;">
                     <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"></div>
+                </div>
+                <!-- 添加安装日志显示区域 -->
+                <div id="installLogs" class="bg-dark text-light p-3 rounded" style="display: none; height: 200px; overflow-y: auto; font-family: monospace;">
+                    <pre class="m-0" style="white-space: pre-wrap;"></pre>
                 </div>
             </div>
             <div class="modal-footer">
@@ -172,11 +179,42 @@ function installApp(appId) {
     const agreeCheck = document.getElementById('agreeTerms');
     const progress = document.querySelector('.progress');
     const progressBar = document.querySelector('.progress-bar');
+    const logsContainer = document.getElementById('installLogs');
+    const logsContent = logsContainer.querySelector('pre');
     
     // 重置状态
     agreeCheck.checked = false;
     progress.style.display = 'none';
     progressBar.style.width = '0%';
+    logsContainer.style.display = 'none';
+    logsContent.textContent = '';
+    
+    // 更新安装日志
+    function updateLogs() {
+        fetch(`/app_store/logs/${appId}/`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`获取日志失败: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.logs) {
+                    logsContent.textContent = data.logs;
+                    logsContainer.scrollTop = logsContainer.scrollHeight;
+                }
+                if (!data.completed) {
+                    setTimeout(updateLogs, 1000);
+                } else if (data.error) {
+                    throw new Error(data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Log update error:', error);
+                logsContent.textContent += `\n错误: ${error.message}`;
+                logsContainer.scrollTop = logsContainer.scrollHeight;
+            });
+    }
     
     confirmBtn.onclick = function() {
         if (!agreeCheck.checked) {
@@ -184,50 +222,66 @@ function installApp(appId) {
             return;
         }
 
-        // 显示进度条
+        // 显示进度条和日志区域
         progress.style.display = 'block';
+        logsContainer.style.display = 'block';
         confirmBtn.disabled = true;
+
+        // 获取CSRF令牌
+        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
         
         // 发送安装请求
         fetch(`/app_store/install/${appId}/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRFToken': getCookie('csrftoken'),
-                'X-Requested-With': 'XMLHttpRequest'
-            }
+                'X-CSRFToken': csrftoken
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({})
         })
         .then(response => {
             if (!response.ok) {
-                throw new Error('网络响应错误');
+                if (response.status === 404) {
+                    throw new Error('安装路径不存在，请检查URL配置');
+                }
+                return response.text().then(text => {
+                    throw new Error(`安装失败 (${response.status}): ${text || '未知错误'}`);
+                });
             }
             return response.json();
         })
         .then(data => {
             if (data.success) {
+                // 开始获取安装日志
+                updateLogs();
+                
                 // 模拟安装进度
                 let progress = 0;
                 const interval = setInterval(() => {
-                    progress += 10;
+                    progress += 5;
                     progressBar.style.width = `${progress}%`;
+                    progressBar.setAttribute('aria-valuenow', progress);
                     
                     if (progress >= 100) {
                         clearInterval(interval);
                         setTimeout(() => {
                             modal.hide();
-                            location.reload();
-                        }, 500);
+                            window.location.reload();
+                        }, 1000);
                     }
-                }, 500);
+                }, 1000);
             } else {
-                throw new Error(data.error || '安装失败');
+                throw new Error(data.message || '安装失败，请查看日志了解详情');
             }
         })
         .catch(error => {
-            console.error('Error:', error);
-            alert(error.message || '安装失败，请重试');
+            console.error('Installation error:', error);
+            logsContent.textContent += `\n安装错误: ${error.message}`;
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+            alert(`安装失败: ${error.message}\n请查看日志了解详情`);
             confirmBtn.disabled = false;
-            progress.style.display = 'none';
+            progressBar.style.width = '0%';
         });
     };
     
@@ -240,12 +294,15 @@ function manageApp(appId) {
     const managementUrls = {
         'nginx': '/website_manage/',
         'mysql': '/database_manage/',
-        'php': '/php_manage/',
+        'php': '/website_manage/',  // PHP管理在网站管理中
         'redis': '/redis_manage/'
     };
 
-    if (managementUrls[appId]) {
-        window.location.href = managementUrls[appId];
+    const url = managementUrls[appId];
+    if (url) {
+        window.location.href = url;
+    } else {
+        alert('该应用暂无管理界面');
     }
 }
 
