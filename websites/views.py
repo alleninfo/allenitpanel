@@ -7,7 +7,7 @@ from django.http import JsonResponse, FileResponse
 from django.views.decorators.http import require_http_methods
 import subprocess
 from .models import Website, AppStore, AppInstallLog, ActivityLog, TerminalSession
-from django.db import models
+from django.db import models, connection
 import os
 import psutil
 import platform
@@ -96,7 +96,7 @@ def get_system_info():
             'os_type': get_os_type(),
             'os_version': get_os_version(),
             'kernel': platform.release(),
-            'uptime': get_uptime(timezone.now())
+            'uptime': get_uptime(None)
         }
     }
 
@@ -132,11 +132,17 @@ def get_os_version():
 
 def get_uptime(boot_time):
     """计算系统运行时间"""
-    uptime = timezone.now() - boot_time
-    days = uptime.days
-    hours = uptime.seconds // 3600
-    minutes = (uptime.seconds % 3600) // 60
-    return f"{days}天{hours}小时{minutes}分钟"
+    try:
+        # 获取系统启动时间
+        boot_time = psutil.boot_time()
+        uptime = time.time() - boot_time
+        days = int(uptime // (24 * 3600))
+        hours = int((uptime % (24 * 3600)) // 3600)
+        minutes = int((uptime % 3600) // 60)
+        return f"{days}天{hours}小时{minutes}分钟"
+    except Exception as e:
+        print(f"获取系统运行时间出错: {e}")
+        return "未知"
 
 def get_network_speed():
     """获取网络速度"""
@@ -211,7 +217,9 @@ def logout(request):
 def website_manage(request):
     if not request.user.is_authenticated:
         return redirect('login')
-    return render(request, 'website_manage/website_manage.html')
+    
+    websites = Website.objects.all()
+    return render(request, 'website_manage/website_manage.html', {'websites': websites})
 
 @login_required
 
@@ -479,20 +487,20 @@ def website_list(request):
 
 @require_http_methods(["POST"])
 def add_website(request):
-    if not request.user.is_authenticated:
-        return JsonResponse({'success': False, 'error': '请先登录'})
-    
+    """添加新网站"""
     try:
-        # 处理添加网站的逻辑
         name = request.POST.get('name')
         domain = request.POST.get('domain')
-        port = request.POST.get('port')
+        port = request.POST.get('port', 80)
         php_version = request.POST.get('php_version')
-        path = request.POST.get('path')
         ssl = request.POST.get('ssl') == 'on'
+        path = f'/www/wwwroot/{domain}'  # 使用域名作为目录名
         
-        # 创建网站
-        Website.objects.create(
+        # 创建网站目录
+        os.makedirs(path, exist_ok=True)
+        
+        # 创建网站记录
+        website = Website.objects.create(
             name=name,
             domain=domain,
             port=port,
@@ -501,9 +509,99 @@ def add_website(request):
             ssl=ssl
         )
         
-        return JsonResponse({'success': True})
+        # 如果启用了SSL，处理SSL配置
+        if ssl:
+            ssl_type = request.POST.get('ssl_type')
+            if ssl_type == 'lets_encrypt':
+                # 处理Let's Encrypt证书
+                pass
+            elif ssl_type == 'custom':
+                # 处理自定义证书
+                cert_file = request.FILES.get('cert_file')
+                key_file = request.FILES.get('key_file')
+                if cert_file and key_file:
+                    # 保存证书文件
+                    pass
+        
+        # 创建Nginx配置
+        create_nginx_config(website)
+        
+        return JsonResponse({
+            'success': True
+        })
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+def create_nginx_config(website):
+    """创建Nginx配置文件"""
+    config = f"""server {{
+    listen {website.port};
+    server_name {website.domain};
+    root {website.path};
+    index index.php index.html index.htm;
+
+    location / {{
+        try_files $uri $uri/ /index.php?$args;
+    }}
+
+    location ~ \.php$ {{
+        fastcgi_pass unix:/var/run/php-fpm/www.sock;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }}
+}}"""
+
+    # 如果启用了SSL，添加SSL配置
+    if website.ssl:
+        ssl_config = f"""
+server {{
+    listen 443 ssl;
+    server_name {website.domain};
+    
+    ssl_certificate /etc/letsencrypt/live/{website.domain}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{website.domain}/privkey.pem;
+    
+    root {website.path};
+    index index.php index.html index.htm;
+
+    location / {{
+        try_files $uri $uri/ /index.php?$args;
+    }}
+
+    location ~ \.php$ {{
+        fastcgi_pass unix:/var/run/php-fpm/www.sock;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }}
+}}
+
+server {{
+    listen 80;
+    server_name {website.domain};
+    return 301 https://$server_name$request_uri;
+}}"""
+        config = ssl_config
+
+    # 保存配置文件 - 修改为CentOS的配置目录
+    config_path = f'/etc/nginx/conf.d/{website.domain}.conf'
+    
+    # 确保目录存在
+    os.makedirs('/etc/nginx/conf.d', exist_ok=True)
+    
+    with open(config_path, 'w') as f:
+        f.write(config)
+
+    # 测试并重载Nginx配置
+    test_result = subprocess.run(['nginx', '-t'], capture_output=True, text=True)
+    if test_result.returncode == 0:
+        subprocess.run(['systemctl', 'reload', 'nginx'])
+    else:
+        raise Exception(f"Nginx配置测试失败: {test_result.stderr}")
 
 @require_http_methods(["POST"])
 def restart_website(request, id):
@@ -1244,6 +1342,405 @@ def check_app_installed(app_name):
     except Exception as e:
         print(f"检查应用 {app_name} 状态时出错: {str(e)}")
         return False
+
+def get_php_versions(request):
+    """获取系统中已安装的PHP版本"""
+    try:
+        versions = []
+        # 检查常见的PHP-FPM服务
+        php_services = [
+            'php-fpm',
+            'php7.4-fpm',
+            'php8.0-fpm',
+            'php8.1-fpm',
+            'php8.2-fpm',
+            'php74-php-fpm'
+        ]
+        
+        for service in php_services:
+            status_result = subprocess.run(['systemctl', 'is-active', service], capture_output=True, text=True)
+            if status_result.stdout.strip() == 'active':
+                # 从服务名称提取版本号
+                if service == 'php-fpm':
+                    # 获取默认PHP版本
+                    version_result = subprocess.run(['php', '-v'], capture_output=True, text=True)
+                    if version_result.returncode == 0:
+                        version_line = version_result.stdout.split('\n')[0]
+                        version = version_line.split()[1].split('.')[0:2]
+                        versions.append(f"{version[0]}.{version[1]}")
+                else:
+                    # 从服务名称解析版本号
+                    version = service.split('-')[0].replace('php', '')
+                    if version:
+                        versions.append(version)
+        
+        # 如果没有找到任何版本，尝试直接检查PHP命令
+        if not versions:
+            version_result = subprocess.run(['php', '-v'], capture_output=True, text=True)
+            if version_result.returncode == 0:
+                version_line = version_result.stdout.split('\n')[0]
+                version = version_line.split('.')[0:2]
+                versions.append(f"{version[0]}.{version[1]}")
+        
+        return JsonResponse({
+            'success': True,
+            'versions': sorted(list(set(versions)))  # 去重并排序
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+@login_required
+@require_http_methods(["POST"])
+def add_database(request):
+    """创建新数据库"""
+    try:
+        name = request.POST.get('name')
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        access = request.POST.get('access')
+        charset = request.POST.get('charset', 'utf8mb4')
+        
+        # 验证输入
+        if not all([name, username, password]):
+            return JsonResponse({
+                'success': False,
+                'error': '请填写所有必填字段'
+            })
+            
+        # 创建数据库和用户
+        with connection.cursor() as cursor:
+            # 创建数据库
+            cursor.execute("CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET %s", [name, charset])
+            
+            # 根据访问权限设置host
+            host = '%' if access == 'remote' else 'localhost'
+            if access == 'specified':
+                host = request.POST.get('specified_ip', 'localhost')
+            
+            # 创建用户并设置密码 (MySQL 8.0 语法)
+            cursor.execute("CREATE USER IF NOT EXISTS `%s`@`%s` IDENTIFIED WITH mysql_native_password BY %s", [username, host, password])
+            
+            # 授予权限 (MySQL 8.0 语法)
+            cursor.execute("GRANT ALL PRIVILEGES ON `%s`.* TO `%s`@`%s`", [name, username, host])
+            cursor.execute("FLUSH PRIVILEGES")
+        
+        return JsonResponse({
+            'success': True
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+@login_required
+def manage_database(request, id):
+    """管理数据库"""
+    try:
+        # 获取数据库信息
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = %s", [id])
+            db_info = cursor.fetchone()
+            
+        if not db_info:
+            return JsonResponse({
+                'success': False,
+                'error': '数据库不存在'
+            })
+            
+        return JsonResponse({
+            'success': True,
+            'database': {
+                'name': db_info[1],
+                'charset': db_info[2],
+                'collation': db_info[3]
+            }
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+@login_required
+@require_http_methods(["POST"])
+def backup_database(request, id):
+    """备份数据库"""
+    try:
+        # 获取数据库名称
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = %s", [id])
+            db = cursor.fetchone()
+            
+        if not db:
+            return JsonResponse({
+                'success': False,
+                'error': '数据库不存在'
+            })
+            
+        # 创建备份目录
+        backup_dir = '/www/backup/database'
+        os.makedirs(backup_dir, exist_ok=True)
+        
+        # 生成备份文件名
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_file = f"{backup_dir}/{id}_{timestamp}.sql"
+        
+        # 执行备份命令
+        cmd = f"mysqldump -u root {id} > {backup_file}"
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            raise Exception(result.stderr)
+            
+        return JsonResponse({
+            'success': True,
+            'file': backup_file
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+@login_required
+@require_http_methods(["POST"])
+def change_database_password(request, id):
+    """修改数据库密码"""
+    try:
+        new_password = request.POST.get('new_password')
+        
+        if not new_password:
+            return JsonResponse({
+                'success': False,
+                'error': '请输入新密码'
+            })
+            
+        # 获取数据库用户信息
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT USER, HOST FROM mysql.user 
+                WHERE USER NOT IN ('root', 'mysql.sys', 'debian-sys-maint', 'mysql.session', 'mysql.infoschema')
+                AND HOST != 'localhost'
+            """)
+            users = cursor.fetchall()
+            
+            # 修改所有相关用户的密码
+            for user, host in users:
+                cursor.execute("ALTER USER `%s`@`%s` IDENTIFIED WITH mysql_native_password BY %s", [user, host, new_password])
+            
+            cursor.execute("FLUSH PRIVILEGES")
+            
+        return JsonResponse({
+            'success': True
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+@login_required
+@require_http_methods(["POST"])
+def delete_database(request, id):
+    """删除数据库"""
+    try:
+        # 获取数据库名称
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = %s", [id])
+            db = cursor.fetchone()
+            
+        if not db:
+            return JsonResponse({
+                'success': False,
+                'error': '数据库不存在'
+            })
+            
+        # 删除数据库
+        with connection.cursor() as cursor:
+            # 获取相关用户
+            cursor.execute("SELECT USER, HOST FROM mysql.db WHERE Db = %s", [id])
+            users = cursor.fetchall()
+            
+            # 删除数据库
+            cursor.execute("DROP DATABASE IF EXISTS `%s`", [id])
+            
+            # 删除相关用户
+            for user, host in users:
+                cursor.execute("DROP USER IF EXISTS `%s`@`%s`", [user, host])
+            
+            cursor.execute("FLUSH PRIVILEGES")
+            
+        return JsonResponse({
+            'success': True
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+@login_required
+def edit_website(request, id):
+    """编辑网站"""
+    try:
+        website = Website.objects.get(id=id)
+        
+        if request.method == 'POST':
+            # 获取表单数据
+            name = request.POST.get('name')
+            domain = request.POST.get('domain')
+            port = request.POST.get('port')
+            php_version = request.POST.get('php_version')
+            ssl = request.POST.get('ssl') == 'on'
+            
+            # 更新网站信息
+            website.name = name
+            website.domain = domain
+            website.port = port
+            website.php_version = php_version
+            website.ssl = ssl
+            website.save()
+            
+            # 更新Nginx配置
+            create_nginx_config(website)
+            
+            return JsonResponse({'success': True})
+        else:
+            # GET请求，返回网站信息
+            return render(request, 'website_manage/edit_website.html', {
+                'website': website
+            })
+            
+    except Website.DoesNotExist:
+        return JsonResponse({'success': False, 'error': '网站不存在'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+@login_required
+def website_files(request, id):
+    """网站文件管理"""
+    try:
+        website = Website.objects.get(id=id)
+        current_path = request.GET.get('path', website.path)
+        
+        # 确保路径在网站目录内
+        if not current_path.startswith(website.path):
+            current_path = website.path
+        
+        # 处理面包屑导航
+        relative_path = current_path[len(website.path):].strip('/')
+        path_parts = []
+        if relative_path:
+            accumulated_path = ''
+            parts = relative_path.split('/')
+            for part in parts:
+                if part:
+                    accumulated_path = (accumulated_path + '/' + part).strip('/')
+                    path_parts.append({
+                        'name': part,
+                        'path': accumulated_path
+                    })
+        
+        # 获取父目录路径
+        parent_path = os.path.dirname(current_path) if current_path != website.path else None
+        
+        # 获取目录内容
+        items = []
+        try:
+            with os.scandir(current_path) as entries:
+                for entry in entries:
+                    stat = entry.stat()
+                    items.append({
+                        'name': entry.name,
+                        'path': os.path.join(current_path, entry.name),
+                        'is_dir': entry.is_dir(),
+                        'size': stat.st_size,
+                        'modified': datetime.fromtimestamp(stat.st_mtime),
+                        'permissions': oct(stat.st_mode)[-3:],
+                        'owner': pwd.getpwuid(stat.st_uid).pw_name,
+                        'group': grp.getgrgid(stat.st_gid).gr_name
+                    })
+            
+            # 排序：目录在前，文件在后，按名称排序
+            items.sort(key=lambda x: (not x['is_dir'], x['name'].lower()))
+
+        except PermissionError:
+            messages.error(request, '没有权限访问该目录')
+            items = []
+        except FileNotFoundError:
+            messages.error(request, '目录不存在')
+            items = []
+        
+        context = {
+            'website': website,
+            'current_path': current_path,
+            'parent_path': parent_path,
+            'path_parts': path_parts,
+            'items': items
+        }
+        return render(request, 'website_manage/website_files.html', context)
+        
+    except Website.DoesNotExist:
+        messages.error(request, '网站不存在')
+        return redirect('website_manage')
+
+def check_service_running(service_name):
+    """检查服务是否在运行"""
+    try:
+        if service_name == 'nginx':
+            result = subprocess.run(['systemctl', 'is-active', 'nginx'], capture_output=True, text=True)
+            return result.stdout.strip() == 'active'
+        elif service_name == 'mysql':
+            result = subprocess.run(['systemctl', 'is-active', 'mysqld'], capture_output=True, text=True)
+            return result.stdout.strip() == 'active'
+        elif service_name == 'php':
+            # 检查php-fpm服务
+            result = subprocess.run(['systemctl', 'is-active', 'php-fpm'], capture_output=True, text=True)
+            return result.stdout.strip() == 'active'
+        return False
+    except Exception as e:
+        print(f"Error checking {service_name} status: {str(e)}")
+        return False
+
+@require_http_methods(["GET"])
+def get_services_status(request):
+    """获取所有服务的状态"""
+    status = {
+        'nginx': check_service_running('nginx'),
+        'mysql': check_service_running('mysql'),
+        'php': check_service_running('php')
+    }
+    return JsonResponse(status)
+
+@require_http_methods(["POST"])
+def control_service(request, service_name, action):
+    """控制服务的启动、停止、重启等操作"""
+    allowed_services = ['nginx', 'mysql', 'php']
+    allowed_actions = ['start', 'stop', 'restart', 'reload']
+    
+    if service_name not in allowed_services:
+        return JsonResponse({'success': False, 'error': '不支持的服务'})
+    
+    if action not in allowed_actions:
+        return JsonResponse({'success': False, 'error': '不支持的操作'})
+    
+    try:
+        if service_name == 'php':
+            service_name = 'php-fpm'  # 对PHP服务使用php-fpm
+            
+        cmd = ['systemctl', action, service_name]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            return JsonResponse({'success': True})
+        else:
+            return JsonResponse({'success': False, 'error': result.stderr})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
 
 

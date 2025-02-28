@@ -266,7 +266,7 @@
                                             <span>Nginx</span>
                                         </div>
                                         <div class="d-flex align-items-center">
-                                            <span class="badge bg-success me-2">运行中</span>
+                                            <span class="badge me-2" id="nginx-status">检测中...</span>
                                             <div class="btn-group btn-group-sm">
                                                 <button class="btn btn-outline-primary btn-sm" onclick="controlService('nginx', 'reload')">
                                                     <i class="fas fa-sync-alt"></i>
@@ -287,7 +287,7 @@
                                             <span>MySQL</span>
                                         </div>
                                         <div class="d-flex align-items-center">
-                                            <span class="badge bg-success me-2">运行中</span>
+                                            <span class="badge me-2" id="mysql-status">检测中...</span>
                                             <div class="btn-group btn-group-sm">
                                                 <button class="btn btn-outline-warning btn-sm" onclick="controlService('mysql', 'restart')">
                                                     <i class="fas fa-redo"></i>
@@ -305,7 +305,7 @@
                                             <span>PHP</span>
                                         </div>
                                         <div class="d-flex align-items-center">
-                                            <span class="badge bg-success me-2">运行中</span>
+                                            <span class="badge me-2" id="php-status">检测中...</span>
                                             <div class="btn-group btn-group-sm">
                                                 <button class="btn btn-outline-warning btn-sm" onclick="controlService('php', 'restart')">
                                                     <i class="fas fa-redo"></i>
@@ -352,7 +352,7 @@
 
     <!-- 最近活动 -->
     <div class="row">
-        <div class="col-md-6">
+        <div class="col-md-12">
             <div class="card">
                 <div class="card-header">
                     <h5 class="card-title mb-0">最近活动</h5>
@@ -418,6 +418,13 @@ function controlService(service, action) {
         return;
     }
 
+    // 更新状态为处理中
+    const statusElement = document.getElementById(`${service}-status`);
+    if (statusElement) {
+        statusElement.textContent = '处理中...';
+        statusElement.className = 'badge bg-warning me-2';
+    }
+
     // 发送请求到后端
     fetch(`/api/service/${service}/${action}/`, {
         method: 'POST',
@@ -429,16 +436,18 @@ function controlService(service, action) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert(`${service} ${action} 操作成功！`);
-            // 刷新页面或更新状态
-            location.reload();
+            // 操作成功后立即检查服务状态
+            setTimeout(checkServiceStatus, 1000);
         } else {
             alert(`操作失败：${data.error}`);
+            // 操作失败后也检查服务状态
+            checkServiceStatus();
         }
     })
     .catch(error => {
         alert('操作失败，请检查网络连接');
         console.error('Error:', error);
+        checkServiceStatus();
     });
 }
 
@@ -474,38 +483,110 @@ function refreshSystemInfo() {
     fetch('/api/system-info/')
         .then(response => response.json())
         .then(data => {
+            // 添加自定义选择器函数
+            function findElementByText(selector, text) {
+                const elements = document.querySelectorAll(selector);
+                return Array.from(elements).find(element => element.textContent.includes(text));
+            }
+
+            // 修改safeUpdateElement函数
+            function safeUpdateElement(selector, updateFn) {
+                let element;
+                if (typeof selector === 'string' && selector.includes(':contains')) {
+                    // 处理包含文本的选择器
+                    const baseSelector = selector.split(':contains')[0];
+                    const searchText = selector.match(/"([^"]+)"/)[1];
+                    element = findElementByText(baseSelector, searchText);
+                } else {
+                    element = document.querySelector(selector);
+                }
+                if (element) {
+                    updateFn(element);
+                }
+            }
+
             // 更新CPU使用率
-            document.querySelector('.stats-card:nth-child(1) h4').textContent = data.cpu.percent + '%';
-            document.querySelector('.stats-card:nth-child(1) .progress-bar').style.width = data.cpu.percent + '%';
-            document.querySelector('.stats-card:nth-child(1) .usage-details small:first-child').textContent = 
-                '已用: ' + data.cpu.used_cores + ' 核';
+            safeUpdateElement('.stats-card:nth-child(1) h4', 
+                el => el.textContent = data.cpu.percent + '%');
+            safeUpdateElement('.stats-card:nth-child(1) .progress-bar', 
+                el => el.style.width = data.cpu.percent + '%');
+            safeUpdateElement('.stats-card:nth-child(1) .usage-details small:first-child', 
+                el => el.textContent = '已用: ' + data.cpu.used_cores + ' 核');
 
             // 更新内存使用率
-            document.querySelector('.stats-card:nth-child(2) h4').textContent = data.memory.percent + '%';
-            document.querySelector('.stats-card:nth-child(2) .progress-bar').style.width = data.memory.percent + '%';
-            document.querySelector('.stats-card:nth-child(2) .usage-details small:first-child').textContent = 
-                '已用: ' + data.memory.used;
+            safeUpdateElement('.stats-card:nth-child(2) h4', 
+                el => el.textContent = data.memory.percent + '%');
+            safeUpdateElement('.stats-card:nth-child(2) .progress-bar', 
+                el => el.style.width = data.memory.percent + '%');
+            safeUpdateElement('.stats-card:nth-child(2) .usage-details small:first-child', 
+                el => el.textContent = '已用: ' + data.memory.used);
 
             // 更新磁盘使用率
-            document.querySelector('.stats-card:nth-child(3) h4').textContent = data.disk.percent + '%';
-            document.querySelector('.stats-card:nth-child(3) .progress-bar').style.width = data.disk.percent + '%';
-            document.querySelector('.stats-card:nth-child(3) .usage-details small:first-child').textContent = 
-                '已用: ' + data.disk.used;
+            safeUpdateElement('.stats-card:nth-child(3) h4', 
+                el => el.textContent = data.disk.percent + '%');
+            safeUpdateElement('.stats-card:nth-child(3) .progress-bar', 
+                el => el.style.width = data.disk.percent + '%');
+            safeUpdateElement('.stats-card:nth-child(3) .usage-details small:first-child', 
+                el => el.textContent = '已用: ' + data.disk.used);
 
             // 更新网络流量
-            document.querySelector('.stats-card:nth-child(4) h4').textContent = 
-                '↓ ' + data.network.speed.received + '/s';
-            document.querySelector('.stats-card:nth-child(4) .usage-details small:first-child').textContent = 
-                '↑ ' + data.network.speed.sent + '/s';
-            document.querySelector('.stats-card:nth-child(4) .usage-details small:last-child').textContent = 
-                '↓ ' + data.network.speed.received + '/s';
+            safeUpdateElement('.stats-card:nth-child(4) h4', 
+                el => el.textContent = '↓ ' + data.network.speed.received + '/s');
+            safeUpdateElement('.stats-card:nth-child(4) .usage-details small:first-child', 
+                el => el.textContent = '↑ ' + data.network.speed.sent + '/s');
+            safeUpdateElement('.stats-card:nth-child(4) .usage-details small:last-child', 
+                el => el.textContent = '↓ ' + data.network.speed.received + '/s');
+
+            // 更新系统信息
+            safeUpdateElement('.system-info p:contains("运行时间")', 
+                el => el.innerHTML = '<strong>运行时间：</strong> ' + data.system.uptime);
         })
         .catch(error => console.error('Error:', error));
 }
 
-// 页面加载完成后启动定时刷新
+// 添加服务状态检查函数
+function checkServiceStatus() {
+    fetch('/api/service/status/', {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        // 更新每个服务的状态
+        ['nginx', 'mysql', 'php'].forEach(service => {
+            const statusElement = document.getElementById(`${service}-status`);
+            if (statusElement) {
+                const isRunning = data[service];
+                statusElement.textContent = isRunning ? '运行中' : '已停止';
+                statusElement.className = `badge ${isRunning ? 'bg-success' : 'bg-danger'} me-2`;
+            }
+        });
+    })
+    .catch(error => {
+        console.error('Error checking service status:', error);
+        // 在发生错误时将状态设置为未知
+        ['nginx', 'mysql', 'php'].forEach(service => {
+            const statusElement = document.getElementById(`${service}-status`);
+            if (statusElement) {
+                statusElement.textContent = '未知';
+                statusElement.className = 'badge bg-secondary me-2';
+            }
+        });
+    });
+}
+
+// 在页面加载完成后启动定时检查
 document.addEventListener('DOMContentLoaded', function() {
-    setInterval(refreshSystemInfo, 2000);  // 每2秒更新一次
+    // 立即检查一次服务状态
+    checkServiceStatus();
+    // 每10秒检查一次服务状态
+    setInterval(checkServiceStatus, 10000);
+    
+    // 原有的系统信息刷新
+    setInterval(refreshSystemInfo, 2000);
 });
 </script>
 {% endblock %}

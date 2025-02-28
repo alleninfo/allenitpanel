@@ -1,0 +1,304 @@
+{% extends 'base.html' %}
+{% load website_filters %}
+
+{% block title %}文件管理 - {{ website.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 页面标题 -->
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h4>文件管理 - {{ website.name }}</h4>
+            <div>
+                <button class="btn btn-primary" onclick="showCreateFolderModal()">
+                    <i class="fas fa-folder-plus me-2"></i>新建文件夹
+                </button>
+                <button class="btn btn-primary" onclick="showUploadModal()">
+                    <i class="fas fa-upload me-2"></i>上传文件
+                </button>
+                <a href="{% url 'website_manage' %}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>返回
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 当前路径 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item">
+                        <a href="?path={{ website.path }}">根目录</a>
+                    </li>
+                    {% if current_path != website.path %}
+                        {% for part in path_parts %}
+                            <li class="breadcrumb-item">
+                                <a href="?path={{ website.path }}/{{ part.path }}">{{ part.name }}</a>
+                            </li>
+                        {% endfor %}
+                    {% endif %}
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <!-- 文件列表 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>名称</th>
+                                    <th>大小</th>
+                                    <th>修改时间</th>
+                                    <th>权限</th>
+                                    <th>所有者</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if parent_path %}
+                                <tr>
+                                    <td colspan="6">
+                                        <a href="?path={{ parent_path }}" class="text-decoration-none">
+                                            <i class="fas fa-level-up-alt me-2"></i>返回上级目录
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                                {% for item in items %}
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            {% if item.is_dir %}
+                                            <i class="fas fa-folder text-warning me-2"></i>
+                                            <a href="?path={{ item.path }}" class="text-decoration-none">{{ item.name }}</a>
+                                            {% else %}
+                                            <i class="fas fa-file text-primary me-2"></i>
+                                            <span>{{ item.name }}</span>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td>{{ item.size|filesizeformat }}</td>
+                                    <td>{{ item.modified|date:"Y-m-d H:i:s" }}</td>
+                                    <td>{{ item.permissions }}</td>
+                                    <td>{{ item.owner }}:{{ item.group }}</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            {% if not item.is_dir %}
+                                            <button class="btn btn-outline-primary" title="编辑"
+                                                onclick="editFile('{{ item.path }}')">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button class="btn btn-outline-info" title="下载"
+                                                onclick="downloadFile('{{ item.path }}')">
+                                                <i class="fas fa-download"></i>
+                                            </button>
+                                            {% endif %}
+                                            <button class="btn btn-outline-warning" title="重命名"
+                                                onclick="renameItem('{{ item.path }}', '{{ item.name }}')">
+                                                <i class="fas fa-pencil-alt"></i>
+                                            </button>
+                                            <button class="btn btn-outline-danger" title="删除"
+                                                onclick="deleteItem('{{ item.path }}')">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="text-muted">
+                                            <i class="fas fa-info-circle me-2"></i>目录为空
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新建文件夹模态框 -->
+<div class="modal fade" id="createFolderModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">新建文件夹</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createFolderForm">
+                    {% csrf_token %}
+                    <input type="hidden" name="current_path" value="{{ current_path }}">
+                    <div class="mb-3">
+                        <label class="form-label">文件夹名称</label>
+                        <input type="text" class="form-control" name="folder_name" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="createFolder()">创建</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 上传文件模态框 -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">上传文件</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="uploadForm">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">选择文件</label>
+                        <input type="file" class="form-control" name="file" multiple>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="uploadFiles()">上传</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 显示新建文件夹模态框
+function showCreateFolderModal() {
+    new bootstrap.Modal(document.getElementById('createFolderModal')).show();
+}
+
+// 显示上传文件模态框
+function showUploadModal() {
+    new bootstrap.Modal(document.getElementById('uploadModal')).show();
+}
+
+// 创建文件夹
+function createFolder() {
+    const form = document.getElementById('createFolderForm');
+    const formData = new FormData(form);
+    
+    fetch('/create_folder/', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (response.ok) {
+            location.reload();
+        } else {
+            alert('创建文件夹失败');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('创建文件夹失败');
+    });
+}
+
+// 上传文件
+function uploadFiles() {
+    const form = document.getElementById('uploadForm');
+    const formData = new FormData(form);
+    formData.append('path', '{{ current_path }}');
+    
+    fetch('/upload_file/?path={{ current_path }}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert('上传失败: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('上传失败');
+    });
+}
+
+// 下载文件
+function downloadFile(path) {
+    window.location.href = `/download_file/?path=${encodeURIComponent(path)}`;
+}
+
+// 重命名文件/文件夹
+function renameItem(path, oldName) {
+    const newName = prompt('请输入新名称:', oldName);
+    if (newName && newName !== oldName) {
+        const formData = new FormData();
+        formData.append('old_path', path);
+        formData.append('new_name', newName);
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+        
+        fetch('/rename_item/', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                alert('重命名失败');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('重命名失败');
+        });
+    }
+}
+
+// 删除文件/文件夹
+function deleteItem(path) {
+    if (confirm('确定要删除吗？此操作不可恢复！')) {
+        const formData = new FormData();
+        formData.append('path', path);
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+        
+        fetch('/delete_item/', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                alert('删除失败');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('删除失败');
+        });
+    }
+}
+
+// 编辑文件
+function editFile(path) {
+    // 实现文件编辑功能
+    alert('文件编辑功能待实现');
+}
+</script>
+{% endblock %} 

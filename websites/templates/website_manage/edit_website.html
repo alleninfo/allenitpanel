@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+
+{% block title %}编辑网站 - {{ website.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 页面标题 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h4>编辑网站 - {{ website.name }}</h4>
+        </div>
+    </div>
+
+    <!-- 编辑表单 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <form id="editWebsiteForm">
+                        {% csrf_token %}
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">网站名称</label>
+                                <input type="text" class="form-control" name="name" value="{{ website.name }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">域名</label>
+                                <input type="text" class="form-control" name="domain" value="{{ website.domain }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">端口</label>
+                                <input type="number" class="form-control" name="port" value="{{ website.port }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">PHP版本</label>
+                                <select class="form-select" name="php_version" id="phpVersion" required>
+                                    <option value="">选择PHP版本</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">网站目录</label>
+                                <input type="text" class="form-control" value="{{ website.path }}" readonly>
+                            </div>
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" name="ssl" id="sslEnable" {% if website.ssl %}checked{% endif %}>
+                                    <label class="form-check-label" for="sslEnable">启用SSL</label>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <button type="button" class="btn btn-primary" onclick="saveWebsite()">保存更改</button>
+                                <a href="{% url 'website_manage' %}" class="btn btn-secondary">返回</a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 获取PHP版本列表
+function getPhpVersions() {
+    fetch('/website_manage/php_versions/')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const select = document.getElementById('phpVersion');
+                data.versions.forEach(version => {
+                    const option = document.createElement('option');
+                    option.value = version;
+                    option.text = `PHP ${version}`;
+                    option.selected = version === '{{ website.php_version }}';
+                    select.appendChild(option);
+                });
+            }
+        });
+}
+
+// 保存网站
+function saveWebsite() {
+    const form = document.getElementById('editWebsiteForm');
+    const formData = new FormData(form);
+    
+    fetch('/website_manage/{{ website.id }}/edit/', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('网站更新成功');
+            window.location.href = '{% url "website_manage" %}';
+        } else {
+            alert('更新失败: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('更新失败，请重试');
+    });
+}
+
+// 页面加载时获取PHP版本
+document.addEventListener('DOMContentLoaded', getPhpVersions);
+</script>
+{% endblock %} 

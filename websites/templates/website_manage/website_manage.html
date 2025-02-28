@@ -59,11 +59,11 @@
                                     <td>
                                         <div class="btn-group btn-group-sm">
                                             <button class="btn btn-outline-primary" title="设置"
-                                                onclick="editWebsite('{{ site.id }}')">
+                                                onclick="window.location.href='{% url 'edit_website' site.id %}';">
                                                 <i class="fas fa-cog"></i>
                                             </button>
                                             <button class="btn btn-outline-info" title="文件管理"
-                                                onclick="manageFiles('{{ site.id }}')">
+                                                onclick="window.location.href='{% url 'website_files' site.id %}'">
                                                 <i class="fas fa-folder"></i>
                                             </button>
                                             <button class="btn btn-outline-warning" title="重启"
@@ -121,10 +121,8 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">PHP版本</label>
-                            <select class="form-select" name="php_version" required>
-                                <option value="7.4">PHP 7.4</option>
-                                <option value="8.0">PHP 8.0</option>
-                                <option value="8.1">PHP 8.1</option>
+                            <select class="form-select" name="php_version" id="phpVersion" required>
+                                <option value="">选择PHP版本</option>
                             </select>
                         </div>
                         <div class="col-12">
@@ -136,8 +134,27 @@
                         </div>
                         <div class="col-12">
                             <div class="form-check">
-                                <input type="checkbox" class="form-check-input" name="ssl" id="sslCheck">
-                                <label class="form-check-label" for="sslCheck">启用SSL</label>
+                                <input type="checkbox" class="form-check-input" name="ssl" id="sslEnable">
+                                <label class="form-check-label" for="sslEnable">启用SSL</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="sslOptions" style="display: none;">
+                        <div class="mb-3">
+                            <label class="form-label">SSL类型</label>
+                            <select class="form-select" name="ssl_type">
+                                <option value="lets_encrypt">Let's Encrypt 免费证书</option>
+                                <option value="custom">自定义证书</option>
+                            </select>
+                        </div>
+                        <div id="customCertFields" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label">证书文件</label>
+                                <input type="file" class="form-control" name="cert_file">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">私钥文件</label>
+                                <input type="file" class="form-control" name="key_file">
                             </div>
                         </div>
                     </div>
@@ -145,75 +162,46 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" onclick="submitAddWebsite()">添加</button>
+                <button type="button" class="btn btn-primary" onclick="saveWebsite()">保存</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- SSL证书配置模态框 -->
-<div class="modal fade" id="sslModal" tabindex="-1" aria-hidden="true">
+<!-- SSL配置模态框 -->
+<div class="modal fade" id="sslConfigModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">SSL证书配置</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title">配置SSL证书</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form id="sslForm">
-                    <input type="hidden" id="sslDomain" name="domain">
+                <form id="sslConfigForm">
+                    {% csrf_token %}
+                    <input type="hidden" name="domain" id="sslDomain">
                     <div class="mb-3">
                         <label class="form-label">证书类型</label>
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="sslType" id="letsencrypt" value="letsencrypt" checked>
-                            <label class="form-check-label" for="letsencrypt">
-                                Let's Encrypt 免费证书
-                            </label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="sslType" id="custom" value="custom">
-                            <label class="form-check-label" for="custom">
-                                自定义证书
-                            </label>
-                        </div>
+                        <select class="form-select" name="ssl_type" id="sslType">
+                            <option value="lets_encrypt">Let's Encrypt 免费证书</option>
+                            <option value="custom">自定义证书</option>
+                        </select>
                     </div>
-
-                    <!-- Let's Encrypt 配置 -->
-                    <div id="letsencryptConfig">
+                    <div id="sslCustomFields" style="display: none;">
                         <div class="mb-3">
-                            <label class="form-label">域名验证方式</label>
-                            <select class="form-select" name="verifyMethod">
-                                <option value="http">HTTP验证（推荐）</option>
-                                <option value="dns">DNS验证</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- 自定义证书配置 -->
-                    <div id="customConfig" style="display: none;">
-                        <div class="mb-3">
-                            <label class="form-label">证书文件（.crt/.pem）</label>
-                            <input type="file" class="form-control" name="certFile" accept=".crt,.pem">
+                            <label class="form-label">证书文件</label>
+                            <input type="file" class="form-control" name="cert_file">
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">私钥文件（.key）</label>
-                            <input type="file" class="form-control" name="keyFile" accept=".key">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">中间证书（可选）</label>
-                            <input type="file" class="form-control" name="chainFile" accept=".crt,.pem">
+                            <label class="form-label">私钥文件</label>
+                            <input type="file" class="form-control" name="key_file">
                         </div>
                     </div>
-
-                    <div class="progress mb-3" style="display: none;">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-                    </div>
-                    <div class="alert" role="alert" style="display: none;"></div>
                 </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" id="applySSL">申请证书</button>
+                <button type="button" class="btn btn-primary" onclick="applySSL()">应用</button>
             </div>
         </div>
     </div>
@@ -221,29 +209,147 @@
 
 {% block extra_js %}
 <script>
-// 添加网站
-function submitAddWebsite() {
+// 获取已安装的PHP版本
+function getInstalledPHPVersions() {
+    fetch('/website_manage/php_versions/')
+        .then(response => response.json())
+        .then(data => {
+            const select = document.getElementById('phpVersion');
+            select.innerHTML = '<option value="">选择PHP版本</option>';
+            data.versions.forEach(version => {
+                select.innerHTML += `<option value="${version}">${version}</option>`;
+            });
+        })
+        .catch(error => console.error('Error:', error));
+}
+
+// 页面加载时获取PHP版本
+document.addEventListener('DOMContentLoaded', getInstalledPHPVersions);
+
+// SSL选项显示控制
+document.getElementById('sslEnable').addEventListener('change', function() {
+    document.getElementById('sslOptions').style.display = this.checked ? 'block' : 'none';
+});
+
+document.querySelector('select[name="ssl_type"]').addEventListener('change', function() {
+    document.getElementById('customCertFields').style.display = 
+        this.value === 'custom' ? 'block' : 'none';
+});
+
+// SSL配置相关
+document.getElementById('sslType').addEventListener('change', function() {
+    document.getElementById('sslCustomFields').style.display = 
+        this.value === 'custom' ? 'block' : 'none';
+});
+
+function configureSSL(domain) {
+    document.getElementById('sslDomain').value = domain;
+    new bootstrap.Modal(document.getElementById('sslConfigModal')).show();
+}
+
+function applySSL() {
+    const form = document.getElementById('sslConfigForm');
+    const formData = new FormData(form);
+    
+    fetch('/website_manage/apply_ssl/', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('SSL证书配置成功');
+            location.reload();
+        } else {
+            alert('SSL证书配置失败: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('SSL证书配置失败');
+    });
+}
+
+// 保存网站
+function saveWebsite() {
     const form = document.getElementById('addWebsiteForm');
     const formData = new FormData(form);
-
-    fetch('/websites/add/', {
+    
+    // 自动设置网站目录
+    const domain = formData.get('domain');
+    formData.append('path', `/www/wwwroot/${domain}`);
+    
+    fetch('/website_manage/add/', {
         method: 'POST',
-        body: formData,
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('网络响应错误');
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            alert('网站添加成功');
+            location.reload();
+        } else {
+            alert('添加失败: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('添加失败，请重试');
+    });
+}
+
+// 重启网站
+function restartWebsite(id) {
+    if (!confirm('确定要重启该网站吗？')) return;
+    
+    fetch(`/website_manage/${id}/restart/`, {
+        method: 'POST',
         headers: {
-            'X-CSRFToken': getCookie('csrftoken')
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
         }
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
+            alert('网站重启成功');
             location.reload();
         } else {
-            alert(data.error);
+            alert('重启失败: ' + data.error);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('添加网站失败，请重试');
+        alert('重启失败，请重试');
+    });
+}
+
+// 删除网站
+function deleteWebsite(id) {
+    if (!confirm('确定要删除该网站吗？此操作不可恢复！')) return;
+    
+    fetch(`/website_manage/${id}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('网站删除成功');
+            location.reload();
+        } else {
+            alert('删除失败: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('删除失败，请重试');
     });
 }
 
@@ -256,152 +362,6 @@ function editWebsite(id) {
 function manageFiles(id) {
     window.location.href = `/websites/${id}/files/`;
 }
-
-// 重启网站
-function restartWebsite(id) {
-    if (!confirm('确定要重启该网站吗？')) return;
-
-    fetch(`/websites/${id}/restart/`, {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': getCookie('csrftoken')
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            location.reload();
-        } else {
-            alert(data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('重启网站失败，请重试');
-    });
-}
-
-// 删除网站
-function deleteWebsite(id) {
-    if (!confirm('确定要删除该网站吗？此操作不可恢复！')) return;
-
-    fetch(`/websites/${id}/delete/`, {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': getCookie('csrftoken')
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            location.reload();
-        } else {
-            alert(data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('删除网站失败，请重试');
-    });
-}
-
-// 获取CSRF Token
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-    return cookieValue;
-}
-
-// SSL证书配置相关的JavaScript
-document.addEventListener('DOMContentLoaded', function() {
-    // 初始化所有工具提示
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
-    });
-
-    // 点击启用SSL按钮时的处理
-    document.querySelectorAll('.enable-ssl').forEach(button => {
-        button.addEventListener('click', function() {
-            const domain = this.getAttribute('data-domain');
-            document.getElementById('sslDomain').value = domain;
-            const sslModal = new bootstrap.Modal(document.getElementById('sslModal'));
-            sslModal.show();
-        });
-    });
-
-    // 切换证书类型显示不同的配置选项
-    document.querySelectorAll('input[name="sslType"]').forEach(radio => {
-        radio.addEventListener('change', function() {
-            document.getElementById('letsencryptConfig').style.display = 
-                this.value === 'letsencrypt' ? 'block' : 'none';
-            document.getElementById('customConfig').style.display = 
-                this.value === 'custom' ? 'block' : 'none';
-            document.getElementById('applySSL').textContent = 
-                this.value === 'letsencrypt' ? '申请证书' : '上传证书';
-        });
-    });
-
-    // 处理SSL证书申请/上传
-    document.getElementById('applySSL').addEventListener('click', function() {
-        const form = document.getElementById('sslForm');
-        const formData = new FormData(form);
-        const sslType = document.querySelector('input[name="sslType"]:checked').value;
-        const progress = form.querySelector('.progress');
-        const progressBar = progress.querySelector('.progress-bar');
-        const alert = form.querySelector('.alert');
-        
-        // 显示进度条和提示
-        progress.style.display = 'block';
-        progressBar.style.width = '0%';
-        alert.style.display = 'block';
-        alert.className = 'alert alert-info';
-        alert.textContent = '正在处理，请稍候...';
-        
-        // 禁用提交按钮
-        this.disabled = true;
-        
-        const endpoint = sslType === 'letsencrypt' ? '/api/apply-ssl/' : '/api/upload-ssl/';
-        
-        fetch(endpoint, {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            progressBar.style.width = '100%';
-            if (data.status === 'success') {
-                alert.className = 'alert alert-success';
-                alert.textContent = data.message;
-                setTimeout(() => {
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('sslModal'));
-                    modal.hide();
-                    // 刷新页面或更新状态
-                    window.location.reload();
-                }, 2000);
-            } else {
-                alert.className = 'alert alert-danger';
-                alert.textContent = data.message;
-                this.disabled = false;
-            }
-        })
-        .catch(error => {
-            progressBar.style.width = '0%';
-            alert.className = 'alert alert-danger';
-            alert.textContent = '操作失败：' + error.message;
-            this.disabled = false;
-        });
-    });
-});
 </script>
 {% endblock %}
-{% endblock %} 
+{% endblock %}

@@ -6,37 +6,48 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'xterm/css/xterm.css' %}">
 <style>
-    #terminal {
-        height: calc(100vh - 150px);
-        background-color: #1e1e1e;
-    }
-
-    .terminal {
+    .terminal-container {
+        width: 100%;
+        height: 400px;
+        background: #1e1e1e;
         padding: 10px;
+        border-radius: 5px;
     }
-
-    .xterm-viewport {
-        overflow-y: auto !important;
+    .terminal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    .terminal-title {
+        color: #fff;
+        font-size: 14px;
+    }
+    .terminal-actions button {
+        margin-left: 10px;
     }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid">
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="card-title mb-0">终端</h5>
-            <div class="btn-group">
-                <button class="btn btn-sm btn-outline-secondary" onclick="clearTerminal()">
-                    <i class="fas fa-eraser"></i> 清屏
-                </button>
-                <button class="btn btn-sm btn-outline-secondary" onclick="reconnectTerminal()">
-                    <i class="fas fa-sync"></i> 重连
-                </button>
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">终端管理</h3>
+                    <div class="card-tools">
+                        <button type="button" class="btn btn-primary" id="new-terminal">
+                            新建终端
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="terminals-container">
+                        <!-- 终端会在这里动态创建 -->
+                    </div>
+                </div>
             </div>
-        </div>
-        <div class="card-body p-0">
-            <div id="terminal"></div>
         </div>
     </div>
 </div>
@@ -45,130 +56,92 @@
 {% block extra_js %}
 <script src="{% static 'xterm/lib/xterm.js' %}"></script>
 <script src="{% static 'xterm/lib/xterm-addon-fit.js' %}"></script>
+<script src="{% static 'js/terminal.js' %}"></script>
 <script>
-let term = null;
-let fitAddon = null;
-let ws = null;
-
-// 初始化终端
-function initTerminal() {
-    // 创建终端实例
-    term = new Terminal({
-        cursorBlink: true,
-        fontSize: 14,
-        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-        theme: {
-            background: '#1e1e1e',
-            foreground: '#ffffff',
-            cursor: '#ffffff',
-            selection: 'rgba(255, 255, 255, 0.3)',
-            black: '#000000',
-            red: '#e06c75',
-            green: '#98c379',
-            yellow: '#d19a66',
-            blue: '#61afef',
-            magenta: '#c678dd',
-            cyan: '#56b6c2',
-            white: '#abb2bf',
-            brightBlack: '#5c6370',
-            brightRed: '#e06c75',
-            brightGreen: '#98c379',
-            brightYellow: '#d19a66',
-            brightBlue: '#61afef',
-            brightMagenta: '#c678dd',
-            brightCyan: '#56b6c2',
-            brightWhite: '#ffffff'
-        },
-        allowTransparency: true,
-        scrollback: 1000,
-        cols: 100,
-        rows: 30
+document.addEventListener('DOMContentLoaded', function() {
+    const terminalsContainer = document.getElementById('terminals-container');
+    const terminals = new Map();
+    
+    // 创建新终端
+    document.getElementById('new-terminal').addEventListener('click', function() {
+        fetch('/terminal/create/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                title: '新终端 ' + (terminals.size + 1)
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                createTerminalUI(data.session_id);
+            }
+        });
     });
-
-    // 加载 FitAddon 插件
-    fitAddon = new FitAddon.FitAddon();
-    term.loadAddon(fitAddon);
-
-    // 打开终端
-    term.open(document.getElementById('terminal'));
-    fitAddon.fit();
-
-    // 连接WebSocket
-    connectWebSocket();
-
-    // 窗口大小改变时调整终端大小
-    window.addEventListener('resize', () => {
-        fitAddon.fit();
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-                type: 'resize',
-                cols: term.cols,
-                rows: term.rows
-            }));
-        }
-    });
-}
-
-// 连接WebSocket
-function connectWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${window.location.host}/ws/terminal/`);
-
-    ws.onopen = () => {
-        term.write('\r\n\x1B[1;32m终端已连接\x1B[0m\r\n');
+    
+    function createTerminalUI(sessionId) {
+        // 创建终端容器
+        const terminalWrapper = document.createElement('div');
+        terminalWrapper.className = 'terminal-wrapper mb-4';
         
-        // 发送终端大小
-        ws.send(JSON.stringify({
-            type: 'resize',
-            cols: term.cols,
-            rows: term.rows
-        }));
-    };
-
-    ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'terminal_output') {
-            term.write(data.output);
-        }
-    };
-
-    ws.onclose = () => {
-        term.write('\r\n\x1B[1;31m终端已断开连接\x1B[0m\r\n');
-    };
-
-    ws.onerror = (error) => {
-        console.error('WebSocket错误:', error);
-        term.write('\r\n\x1B[1;31m连接错误\x1B[0m\r\n');
-    };
-
-    // 终端输入处理
-    term.onData(data => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-                type: 'terminal_input',
-                input: data
-            }));
-        }
-    });
-}
-
-// 清屏
-function clearTerminal() {
-    if (term) {
-        term.clear();
+        const header = document.createElement('div');
+        header.className = 'terminal-header';
+        header.innerHTML = `
+            <div class="terminal-title">终端 ${terminals.size + 1}</div>
+            <div class="terminal-actions">
+                <button class="btn btn-sm btn-danger close-terminal">关闭</button>
+            </div>
+        `;
+        
+        const container = document.createElement('div');
+        container.className = 'terminal-container';
+        
+        terminalWrapper.appendChild(header);
+        terminalWrapper.appendChild(container);
+        terminalsContainer.appendChild(terminalWrapper);
+        
+        // 创建终端实例
+        const terminal = new Terminal(sessionId, container);
+        terminals.set(sessionId, terminal);
+        
+        // 关闭按钮事件
+        header.querySelector('.close-terminal').addEventListener('click', function() {
+            fetch('/terminal/close/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({
+                    session_id: sessionId
+                })
+            })
+            .then(() => {
+                terminal.disconnect();
+                terminals.delete(sessionId);
+                terminalWrapper.remove();
+            });
+        });
     }
-}
-
-// 重新连接
-function reconnectTerminal() {
-    if (ws) {
-        ws.close();
+    
+    // 获取 CSRF Token
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
     }
-    term.clear();
-    connectWebSocket();
-}
-
-// 页面加载完成后初始化终端
-document.addEventListener('DOMContentLoaded', initTerminal);
+});
 </script>
 {% endblock %} 
