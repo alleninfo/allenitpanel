@@ -3,7 +3,7 @@ from django.contrib.auth import authenticate, login as auth_login, logout as aut
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse, FileResponse
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 import subprocess
 from .models import Website, AppStore, AppInstallLog, ActivityLog, TerminalSession
 from django.db import models, connection
@@ -24,6 +24,10 @@ import pty
 import termios
 import struct
 import select
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework import status
+from .serializers import WebsiteSerializer
 
 # Create your views here.
 
@@ -538,40 +542,66 @@ def install_app(request, app_id):
             'error': str(e)
         })
 
-@login_required
-@require_http_methods(["POST"])
+@require_POST
 def uninstall_app(request, app_id):
-    """卸载应用"""
     try:
-        app = AppStore.objects.get(id=app_id)
-        
-        if not app.is_installed:
+        app = Website.objects.get(id=app_id)
+        if app.uninstall_script:
+            # 执行卸载脚本
+            process = subprocess.Popen(
+                app.uninstall_script,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            stdout, stderr = process.communicate()
+            
+            if process.returncode == 0:
+                app.is_installed = False
+                app.installed_at = None
+                app.save()
+                return JsonResponse({'success': True})
+            else:
+                error_message = stderr.decode() or stdout.decode()
+                return JsonResponse({
+                    'success': False,
+                    'message': f'卸载失败: {error_message}'
+                })
+        else:
             return JsonResponse({
                 'success': False,
-                'error': '应用未安装'
+                'message': '未找到卸载脚本'
             })
-
-        # 这里添加卸载命令的执行逻辑
-        # ...
-
-        app.is_installed = False
-        app.save()
-        
-        log_activity(request, 'uninstall', f'卸载应用 {app.name}')
-        
-        return JsonResponse({
-            'success': True
-        })
-
-    except AppStore.DoesNotExist:
+    except Website.DoesNotExist:
         return JsonResponse({
             'success': False,
-            'error': '应用不存在'
+            'message': '应用不存在'
         })
     except Exception as e:
         return JsonResponse({
             'success': False,
-            'error': str(e)
+            'message': str(e)
+        })
+
+def uninstall_logs(request, app_id):
+    # 获取卸载日志的处理逻辑
+    log_file = f'logs/uninstall_{app_id}.log'
+    try:
+        if os.path.exists(log_file):
+            with open(log_file, 'r') as f:
+                logs = f.read()
+            return JsonResponse({
+                'logs': logs,
+                'completed': True  # 根据实际情况设置
+            })
+        return JsonResponse({
+            'logs': '',
+            'completed': True
+        })
+    except Exception as e:
+        return JsonResponse({
+            'logs': f'读取日志失败: {str(e)}',
+            'completed': True
         })
 
 @login_required

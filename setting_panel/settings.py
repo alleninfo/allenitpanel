@@ -38,7 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'websites',
-    'channels',
+    
 ]
 
 MIDDLEWARE = [
@@ -51,7 +51,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'setting_panel.urls'
+ROOT_URLCONF = 'allenitpanel.urls'
 
 TEMPLATES = [
     {
@@ -69,7 +69,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'setting_panel.wsgi.application'
+WSGI_APPLICATION = 'allenitpanel.wsgi.application'
 
 
 # Database
@@ -134,17 +134,6 @@ LOGOUT_REDIRECT_URL = '/login/'
 LOGIN_REDIRECT_URL = '/dashboard/'
 
 
-
-
-# 添加 ASGI 应用配置
-ASGI_APPLICATION = 'allenpanel.asgi.application'
-
-# 添加 Channel Layers 配置
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer'
-    }
-}
 
 
 

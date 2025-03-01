@@ -1,0 +1,15 @@
+[Unit]
+Description=AllenITPanel Service
+After=network.target
+
+[Service]
+User=root
+Group=root
+WorkingDirectory=/root/allenitpanel
+Environment=PYTHONPATH=/root/allenitpanel
+ExecStart=/root/allenitpanel/venv/bin/gunicorn wsgi:application --bind 0.0.0.0:8000 --access-logfile logs/access.log --error-logfile logs/error.log
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target 

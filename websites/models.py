@@ -13,6 +13,13 @@ class Website(models.Model):
     status = models.BooleanField(default=True, verbose_name='运行状态')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+    description = models.TextField()
+    version = models.CharField(max_length=20)
+    icon = models.ImageField(upload_to='icons/', null=True, blank=True)
+    install_script = models.TextField()
+    uninstall_script = models.TextField(blank=True, null=True)
+    is_installed = models.BooleanField(default=False)
+    installed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = '网站'

@@ -53,4 +53,6 @@ urlpatterns = [
     path('batch_delete/', views.batch_delete, name='batch_delete'),
     path('api/service/status/', views.get_services_status, name='service_status'),
     path('api/service/<str:service_name>/<str:action>/', views.control_service, name='service_control'),
+    path('uninstall/<int:app_id>/', views.uninstall_app, name='uninstall_app'),
+    path('uninstall_logs/<int:app_id>/', views.uninstall_logs, name='uninstall_logs'),
 ]

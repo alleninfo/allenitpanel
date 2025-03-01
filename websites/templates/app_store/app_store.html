@@ -78,9 +78,14 @@
                     <div class="d-flex justify-content-between align-items-center">
                         {% if app.is_installed %}
                         <span class="badge bg-success">已安装</span>
-                        <button class="btn btn-sm btn-outline-primary" onclick="manageApp('{{ app.name|lower }}')">
-                            管理
-                        </button>
+                        <div>
+                            <button class="btn btn-sm btn-outline-primary me-2" onclick="manageApp('{{ app.name|lower }}')">
+                                管理
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="uninstallApp('{{ app.id }}', '{{ app.name }}')">
+                                卸载
+                            </button>
+                        </div>
                         {% else %}
                         <button class="btn btn-sm btn-primary" onclick="installApp('{{ app.id }}')">
                             安装
@@ -121,6 +126,41 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
                 <button type="button" class="btn btn-primary" id="confirmInstall">确定安装</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 添加卸载确认模态框 -->
+<div class="modal fade" id="uninstallModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">卸载确认</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>警告：</strong>卸载操作可能会删除应用相关的数据和配置文件，请谨慎操作！
+                </div>
+                <p>确定要卸载 <span id="uninstallAppName" class="fw-bold"></span> 吗？</p>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="confirmUninstall">
+                    <label class="form-check-label" for="confirmUninstall">
+                        我已了解卸载可能带来的影响，并确认要卸载此应用
+                    </label>
+                </div>
+                <div class="progress mb-3" style="display: none;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-danger" role="progressbar"></div>
+                </div>
+                <div id="uninstallLogs" class="bg-dark text-light p-3 rounded" style="display: none; height: 200px; overflow-y: auto; font-family: monospace;">
+                    <pre class="m-0" style="white-space: pre-wrap;"></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmUninstallBtn">确认卸载</button>
             </div>
         </div>
     </div>
@@ -304,6 +344,111 @@ function manageApp(appId) {
     } else {
         alert('该应用暂无管理界面');
     }
+}
+
+// 卸载应用
+function uninstallApp(appId, appName) {
+    const modal = new bootstrap.Modal(document.getElementById('uninstallModal'));
+    const confirmBtn = document.getElementById('confirmUninstallBtn');
+    const confirmCheck = document.getElementById('confirmUninstall');
+    const progress = document.querySelector('#uninstallModal .progress');
+    const progressBar = document.querySelector('#uninstallModal .progress-bar');
+    const logsContainer = document.getElementById('uninstallLogs');
+    const logsContent = logsContainer.querySelector('pre');
+    
+    // 设置应用名称
+    document.getElementById('uninstallAppName').textContent = appName;
+    
+    // 重置状态
+    confirmCheck.checked = false;
+    progress.style.display = 'none';
+    progressBar.style.width = '0%';
+    logsContainer.style.display = 'none';
+    logsContent.textContent = '';
+    confirmBtn.disabled = false;
+    
+    // 更新卸载日志
+    function updateUninstallLogs() {
+        fetch(`/app_store/uninstall_logs/${appId}/`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.logs) {
+                    logsContent.textContent = data.logs;
+                    logsContainer.scrollTop = logsContainer.scrollHeight;
+                }
+                if (!data.completed) {
+                    setTimeout(updateUninstallLogs, 1000);
+                }
+            })
+            .catch(error => {
+                console.error('Log update error:', error);
+                logsContent.textContent += `\n错误: ${error.message}`;
+            });
+    }
+    
+    confirmBtn.onclick = function() {
+        if (!confirmCheck.checked) {
+            alert('请先确认卸载警告');
+            return;
+        }
+
+        // 显示进度条和日志区域
+        progress.style.display = 'block';
+        logsContainer.style.display = 'block';
+        confirmBtn.disabled = true;
+
+        // 获取CSRF令牌
+        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        
+        // 发送卸载请求
+        fetch(`/app_store/uninstall/${appId}/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            credentials: 'same-origin'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`卸载失败 (${response.status})`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                // 开始获取卸载日志
+                updateUninstallLogs();
+                
+                // 模拟卸载进度
+                let progress = 0;
+                const interval = setInterval(() => {
+                    progress += 10;
+                    progressBar.style.width = `${progress}%`;
+                    progressBar.setAttribute('aria-valuenow', progress);
+                    
+                    if (progress >= 100) {
+                        clearInterval(interval);
+                        setTimeout(() => {
+                            modal.hide();
+                            window.location.reload();
+                        }, 1000);
+                    }
+                }, 500);
+            } else {
+                throw new Error(data.message || '卸载失败');
+            }
+        })
+        .catch(error => {
+            console.error('Uninstall error:', error);
+            logsContent.textContent += `\n卸载错误: ${error.message}`;
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+            alert(`卸载失败: ${error.message}`);
+            confirmBtn.disabled = false;
+        });
+    };
+    
+    modal.show();
 }
 
 // 获取CSRF Token
