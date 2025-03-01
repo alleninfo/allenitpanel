@@ -126,15 +126,15 @@
 </div>
 
 <!-- 文件编辑器模态框 -->
-<div class="modal fade" id="fileEditorModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+<div class="modal" id="fileEditorModal" tabindex="-1" role="dialog" aria-labelledby="fileEditorModalTitle">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">编辑文件</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title" id="fileEditorModalTitle">编辑文件</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
             </div>
             <div class="modal-body">
-                <textarea id="fileContent" class="form-control" style="height: 400px; font-family: monospace;"></textarea>
+                <textarea id="fileContent" class="form-control" style="height: 400px; font-family: monospace;" aria-label="文件内容"></textarea>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>

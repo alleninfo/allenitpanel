@@ -347,13 +347,37 @@ document.addEventListener('DOMContentLoaded', function() {
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        document.getElementById('fileContent').value = data.content;
-                        const modal = new bootstrap.Modal(document.getElementById('fileEditorModal'));
-                        modal.show();
+                        const fileContent = document.getElementById('fileContent');
+                        fileContent.value = data.content;
+                        
+                        const modal = document.getElementById('fileEditorModal');
+                        const modalInstance = new bootstrap.Modal(modal, {
+                            keyboard: true,
+                            backdrop: true,
+                            focus: true
+                        });
+                        
+                        // 存储最后聚焦的元素
+                        let lastFocusedElement = document.activeElement;
+                        
+                        // 监听模态框事件
+                        modal.addEventListener('shown.bs.modal', function () {
+                            // 聚焦到文本区域
+                            fileContent.focus();
+                        });
+                        
+                        modal.addEventListener('hidden.bs.modal', function () {
+                            // 将焦点返回到之前的元素
+                            if (lastFocusedElement) {
+                                lastFocusedElement.focus();
+                            }
+                        });
+                        
+                        modalInstance.show();
 
                         // 保存文件内容
                         document.getElementById('saveFileBtn').onclick = function() {
-                            const content = document.getElementById('fileContent').value;
+                            const content = fileContent.value;
                             fetch('{% url "save_file" %}', {
                                 method: 'POST',
                                 headers: {
@@ -368,7 +392,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             .then(response => response.json())
                             .then(data => {
                                 if (data.status === 'success') {
-                                    modal.hide();
+                                    modalInstance.hide();
                                 } else {
                                     alert('保存失败：' + data.message);
                                 }
