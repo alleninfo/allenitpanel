@@ -25,6 +25,7 @@
                                 <tr>
                                     <th>数据库名</th>
                                     <th>用户名</th>
+                                    <th>密码</th>
                                     <th>大小</th>
                                     <th>字符集</th>
                                     <th>状态</th>
@@ -42,6 +43,18 @@
                                         </div>
                                     </td>
                                     <td>{{ db.username }}</td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <span class="password-mask" id="password_mask_{{ db.name }}">********</span>
+                                            <span class="password-text" id="password_text_{{ db.name }}" style="display: none;">{{ db.password }}</span>
+                                           
+                                            <button class="btn btn-link text-secondary copy-password" 
+                                                data-password="{{ db.password }}" 
+                                                title="复制密码">
+                                                <i class="fas fa-copy"></i>
+                                            </button>
+                                        </div>
+                                    </td>
                                     <td>{{ db.size }}</td>
                                     <td>{{ db.charset }}</td>
                                     <td>
@@ -201,6 +214,10 @@ function submitAddDatabase() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
+            // 关闭模态框
+            bootstrap.Modal.getInstance(document.getElementById('addDatabaseModal')).hide();
+            // 刷新页面前保存密码
+            sessionStorage.setItem('new_db_password', data.password);
             location.reload();
         } else {
             alert(data.error);
@@ -313,6 +330,82 @@ function getCookie(name) {
     }
     return cookieValue;
 }
+
+// 显示/隐藏密码
+document.querySelectorAll('.toggle-password').forEach(button => {
+    button.addEventListener('click', function() {
+        const maskId = this.getAttribute('data-mask');
+        const textId = this.getAttribute('data-text');
+        const passwordMask = document.getElementById(maskId);
+        const passwordText = document.getElementById(textId);
+        const icon = this.querySelector('i');
+        
+        if (passwordMask.style.display !== 'none') {
+            passwordMask.style.display = 'none';
+            passwordText.style.display = 'inline';
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+        } else {
+            passwordMask.style.display = 'inline';
+            passwordText.style.display = 'none';
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
+        }
+    });
+});
+
+// 复制密码
+document.querySelectorAll('.copy-password').forEach(button => {
+    button.addEventListener('click', function() {
+        const password = this.getAttribute('data-password');
+        navigator.clipboard.writeText(password).then(() => {
+            // 显示复制成功提示
+            const icon = this.querySelector('i');
+            icon.classList.remove('fa-copy');
+            icon.classList.add('fa-check');
+            setTimeout(() => {
+                icon.classList.remove('fa-check');
+                icon.classList.add('fa-copy');
+            }, 1000);
+        });
+    });
+});
+
+// 页面加载完成后检查是否有新创建的数据库密码
+document.addEventListener('DOMContentLoaded', function() {
+    const newPassword = sessionStorage.getItem('new_db_password');
+    if (newPassword) {
+        // 找到最新创建的数据库行
+        const lastRow = document.querySelector('table tbody tr:first-child');
+        if (lastRow) {
+            const passwordText = lastRow.querySelector('.password-text');
+            const copyButton = lastRow.querySelector('.copy-password');
+            if (passwordText && copyButton) {
+                passwordText.textContent = newPassword;
+                copyButton.setAttribute('data-password', newPassword);
+            }
+        }
+        // 清除保存的密码
+        sessionStorage.removeItem('new_db_password');
+    }
+});
 </script>
+
+<style>
+.password-mask {
+    font-family: monospace;
+    letter-spacing: 1px;
+}
+.password-text {
+    font-family: monospace;
+    letter-spacing: 1px;
+}
+.btn-link {
+    padding: 0 5px;
+}
+.btn-link:hover {
+    color: var(--bs-primary) !important;
+}
+</style>
 {% endblock %}
 {% endblock %} 

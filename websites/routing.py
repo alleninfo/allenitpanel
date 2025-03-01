@@ -1,6 +1,6 @@
-from django.urls import path
+from django.urls import re_path
 from . import consumers
 
 websocket_urlpatterns = [
-    path('terminal/<str:session_id>/', consumers.TerminalConsumer.as_asgi()),
+    re_path(r'ws/terminal/(?P<terminal_id>\w+)/$', consumers.TerminalConsumer.as_asgi()),
 ] 

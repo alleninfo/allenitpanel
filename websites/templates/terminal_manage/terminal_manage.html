@@ -1,51 +1,20 @@
 {% extends 'base.html' %}
-{% load static %}
 
 {% block title %}终端管理{% endblock %}
 
-{% block extra_css %}
-<link rel="stylesheet" href="{% static 'xterm/css/xterm.css' %}">
-<style>
-    .terminal-container {
-        width: 100%;
-        height: 400px;
-        background: #1e1e1e;
-        padding: 10px;
-        border-radius: 5px;
-    }
-    .terminal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 10px;
-    }
-    .terminal-title {
-        color: #fff;
-        font-size: 14px;
-    }
-    .terminal-actions button {
-        margin-left: 10px;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
 <div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h4>终端管理</h4>
+        </div>
+    </div>
+
     <div class="row">
         <div class="col-12">
             <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">终端管理</h3>
-                    <div class="card-tools">
-                        <button type="button" class="btn btn-primary" id="new-terminal">
-                            新建终端
-                        </button>
-                    </div>
-                </div>
                 <div class="card-body">
-                    <div id="terminals-container">
-                        <!-- 终端会在这里动态创建 -->
-                    </div>
+                    <div id="terminal"></div>
                 </div>
             </div>
         </div>
@@ -53,81 +22,115 @@
 </div>
 {% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.css" />
+<style>
+    #terminal {
+        height: 600px;
+        background: #000;
+        padding: 10px;
+    }
+    .xterm-viewport {
+        overflow-y: auto !important;
+    }
+</style>
+{% endblock %}
+
 {% block extra_js %}
-<script src="{% static 'xterm/lib/xterm.js' %}"></script>
-<script src="{% static 'xterm/lib/xterm-addon-fit.js' %}"></script>
-<script src="{% static 'js/terminal.js' %}"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.7.0/lib/xterm-addon-fit.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const terminalsContainer = document.getElementById('terminals-container');
-    const terminals = new Map();
+    const terminal = new Terminal({
+        cursorBlink: true,
+        fontSize: 14,
+        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+        theme: {
+            background: '#000000',
+            foreground: '#ffffff'
+        }
+    });
     
-    // 创建新终端
-    document.getElementById('new-terminal').addEventListener('click', function() {
-        fetch('/terminal/create/', {
+    const fitAddon = new FitAddon.FitAddon();
+    terminal.loadAddon(fitAddon);
+    terminal.open(document.getElementById('terminal'));
+    fitAddon.fit();
+    
+    // 生成随机终端ID
+    const terminalId = Math.random().toString(36).substring(2, 15);
+    let lastOutputId = 0;
+    
+    // 初始化终端会话
+    fetch('/terminal/init/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+            terminal_id: terminalId,
+            cols: terminal.cols,
+            rows: terminal.rows
+        })
+    });
+    
+    // 处理终端输入
+    terminal.onData(data => {
+        fetch('/terminal/input/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCookie('csrftoken')
             },
             body: JSON.stringify({
-                title: '新终端 ' + (terminals.size + 1)
+                terminal_id: terminalId,
+                input: data
             })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                createTerminalUI(data.session_id);
-            }
         });
     });
     
-    function createTerminalUI(sessionId) {
-        // 创建终端容器
-        const terminalWrapper = document.createElement('div');
-        terminalWrapper.className = 'terminal-wrapper mb-4';
-        
-        const header = document.createElement('div');
-        header.className = 'terminal-header';
-        header.innerHTML = `
-            <div class="terminal-title">终端 ${terminals.size + 1}</div>
-            <div class="terminal-actions">
-                <button class="btn btn-sm btn-danger close-terminal">关闭</button>
-            </div>
-        `;
-        
-        const container = document.createElement('div');
-        container.className = 'terminal-container';
-        
-        terminalWrapper.appendChild(header);
-        terminalWrapper.appendChild(container);
-        terminalsContainer.appendChild(terminalWrapper);
-        
-        // 创建终端实例
-        const terminal = new Terminal(sessionId, container);
-        terminals.set(sessionId, terminal);
-        
-        // 关闭按钮事件
-        header.querySelector('.close-terminal').addEventListener('click', function() {
-            fetch('/terminal/close/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCookie('csrftoken')
-                },
-                body: JSON.stringify({
-                    session_id: sessionId
-                })
+    // 处理终端大小调整
+    terminal.onResize(size => {
+        fetch('/terminal/resize/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                terminal_id: terminalId,
+                cols: size.cols,
+                rows: size.rows
             })
-            .then(() => {
-                terminal.disconnect();
-                terminals.delete(sessionId);
-                terminalWrapper.remove();
-            });
         });
+    });
+    
+    // 轮询获取终端输出
+    function pollOutput() {
+        fetch(`/terminal/output/?terminal_id=${terminalId}&last_output_id=${lastOutputId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.output) {
+                    terminal.write(data.output);
+                    lastOutputId = data.output_id;
+                }
+                setTimeout(pollOutput, 100);
+            })
+            .catch(error => {
+                console.error('轮询错误:', error);
+                setTimeout(pollOutput, 1000);
+            });
     }
     
-    // 获取 CSRF Token
+    // 开始轮询
+    pollOutput();
+    
+    // 处理窗口大小变化
+    window.addEventListener('resize', () => {
+        fitAddon.fit();
+    });
+    
+    // 获取CSRF Token的辅助函数
     function getCookie(name) {
         let cookieValue = null;
         if (document.cookie && document.cookie !== '') {

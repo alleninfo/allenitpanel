@@ -25,7 +25,11 @@ urlpatterns = [
     path('firewall_manage/', views.firewall_manage, name='firewall_manage'),
     path('file_manage/', views.file_manage, name='file_manage'),
     
-    path('terminal_manage/', views.terminal_manage, name='terminal_manage'),
+    path('terminal/', views.terminal_manage, name='terminal_manage'),
+    path('terminal/init/', views.terminal_init, name='terminal_init'),
+    path('terminal/input/', views.terminal_input, name='terminal_input'),
+    path('terminal/output/', views.terminal_output, name='terminal_output'),
+    path('terminal/resize/', views.terminal_resize, name='terminal_resize'),
     
     path('cron_manage/', views.cron_manage, name='cron_manage'),
     path('app_store/', views.app_store, name='app_store'),
