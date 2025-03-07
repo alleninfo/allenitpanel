@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'websites',
+    'rest_framework',
     
 ]
 
@@ -51,7 +52,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'allenitpanel.urls'
+ROOT_URLCONF = 'setting_panel.urls'
 
 TEMPLATES = [
     {
@@ -69,7 +70,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'allenitpanel.wsgi.application'
+WSGI_APPLICATION = 'setting_panel.wsgi.application'
 
 
 # Database
